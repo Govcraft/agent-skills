@@ -101,7 +101,8 @@ impl ErrorOptions {
 #[command(name = "agent-skills")]
 #[command(about = "CLI for validating and working with Agent Skills")]
 #[command(version)]
-#[command(after_help = format!("Documentation: {DOCUMENTATION_URL}"))]
+#[command(infer_subcommands = true)]
+#[command(after_help = format!("Environment:\n  NO_COLOR     Disable colored output when set (any value)\n  TERM=dumb    Disable colored output when set\n\nDocumentation: {DOCUMENTATION_URL}"))]
 struct Cli {
     #[command(flatten)]
     output: OutputOptions,

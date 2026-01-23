@@ -1,7 +1,11 @@
 //! Terminal color support for CLI output.
 //!
 //! Provides ANSI color codes and helper functions for colorizing output.
-//! Colors are only enabled when stdout is a TTY and `--no-color` is not set.
+//! Colors are disabled when any of the following are true:
+//! - The `--no-color` CLI flag is set
+//! - The `NO_COLOR` environment variable is set (any value, per <https://no-color.org/>)
+//! - The `TERM` environment variable equals "dumb"
+//! - stdout is not a TTY
 
 use std::io::IsTerminal;
 
@@ -29,7 +33,11 @@ pub const CROSS: &str = "✗";
 /// Configuration for terminal color output.
 ///
 /// Controls whether ANSI color codes are emitted in output.
-/// Colors are enabled only when stdout is a TTY and `--no-color` is not set.
+/// Colors are disabled when any of the following are true:
+/// - The `--no-color` CLI flag is set
+/// - The `NO_COLOR` environment variable is set (any value, per <https://no-color.org/>)
+/// - The `TERM` environment variable equals "dumb"
+/// - stdout is not a TTY
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ColorConfig {
     enabled: bool,
@@ -51,16 +59,27 @@ impl ColorConfig {
         self.enabled
     }
 
-    /// Detects whether colors should be enabled based on TTY and flag.
+    /// Detects whether colors should be enabled based on TTY, flags, and environment.
+    ///
+    /// Colors are disabled when any of the following are true:
+    /// - The `--no-color` CLI flag is set
+    /// - The `NO_COLOR` environment variable is set (any value, per <https://no-color.org/>)
+    /// - The `TERM` environment variable equals "dumb"
+    /// - stdout is not a TTY
     ///
     /// # Arguments
     /// * `no_color_flag` - Whether the `--no-color` CLI flag was set
     ///
     /// # Returns
-    /// A `ColorConfig` with colors enabled if stdout is a TTY and `--no-color` is false.
+    /// A `ColorConfig` with colors enabled only if all checks pass.
     #[must_use]
     pub fn detect(no_color_flag: bool) -> Self {
-        let enabled = !no_color_flag && std::io::stdout().is_terminal();
+        let no_color_env = std::env::var("NO_COLOR").is_ok();
+        let term_dumb = std::env::var("TERM")
+            .map(|t| t == "dumb")
+            .unwrap_or(false);
+        let enabled =
+            !no_color_flag && !no_color_env && !term_dumb && std::io::stdout().is_terminal();
         Self::new(enabled)
     }
 }
@@ -269,5 +288,24 @@ mod tests {
         let config = ColorConfig::new(false);
         let result = error_symbol(config);
         assert_eq!(result, "✗");
+    }
+
+    #[test]
+    fn detect_disables_colors_when_no_color_flag_set() {
+        // When the --no-color flag is set, colors should be disabled
+        // regardless of TTY status (which is false in tests)
+        let config = ColorConfig::detect(true);
+        assert!(!config.is_enabled());
+    }
+
+    #[test]
+    fn detect_disables_colors_in_non_tty() {
+        // In test environment, stdout is typically not a TTY
+        // So even without --no-color flag, colors should be disabled
+        let config = ColorConfig::detect(false);
+        // Note: This test depends on the test environment not being a TTY
+        // If it is a TTY, colors would be enabled. The test verifies
+        // that the detect function works correctly for non-TTY environments.
+        assert!(!config.is_enabled());
     }
 }
