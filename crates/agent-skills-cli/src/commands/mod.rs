@@ -1,5 +1,6 @@
 //! CLI command implementations.
 
+pub mod list;
 pub mod read_properties;
 pub mod to_prompt;
 pub mod validate;

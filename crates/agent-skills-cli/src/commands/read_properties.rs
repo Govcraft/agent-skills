@@ -1,12 +1,15 @@
 //! Read-properties command implementation.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::io::{self, BufRead};
+use std::path::PathBuf;
 
 use agent_skills::SkillDirectory;
 use serde::Serialize;
 
 use crate::error::CliError;
+use crate::output_format::OutputFormat;
+use crate::output_mode::OutputMode;
 
 /// Output format for skill properties.
 #[derive(Serialize)]
@@ -21,16 +24,57 @@ pub struct SkillProperties {
     metadata: Option<HashMap<String, String>>,
 }
 
-/// Reads skill properties and outputs as JSON.
+/// Reads a path from the given source (file path or "-" for stdin).
+fn read_path(path_arg: &str) -> Result<PathBuf, CliError> {
+    if path_arg == "-" {
+        read_path_from_stdin()
+    } else {
+        Ok(PathBuf::from(path_arg))
+    }
+}
+
+/// Reads a single path from stdin.
+fn read_path_from_stdin() -> Result<PathBuf, CliError> {
+    let stdin = io::stdin();
+    let line = stdin
+        .lock()
+        .lines()
+        .find_map(|line| {
+            match line {
+                Ok(l) => {
+                    let trimmed = l.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(Ok(trimmed.to_string()))
+                    }
+                }
+                Err(e) => Some(Err(CliError::StdinError {
+                    message: e.to_string(),
+                })),
+            }
+        })
+        .ok_or(CliError::NoPathsProvided)??;
+
+    Ok(PathBuf::from(line))
+}
+
+/// Reads skill properties and outputs in the specified format.
 ///
 /// # Errors
 ///
 /// Returns `CliError` if:
 /// - The path doesn't exist
 /// - The skill is invalid
-/// - JSON serialization fails
-pub fn run(skill_path: &Path) -> Result<(), CliError> {
-    let skill_path = super::resolve_skill_path(skill_path)?;
+/// - Serialization fails
+pub fn run(
+    path_arg: &str,
+    format: OutputFormat,
+    compact: bool,
+    _output_mode: OutputMode,
+) -> Result<(), CliError> {
+    let skill_path = read_path(path_arg)?;
+    let skill_path = super::resolve_skill_path(&skill_path)?;
 
     let dir = SkillDirectory::load(&skill_path).map_err(|e| CliError::LoadError {
         path: skill_path.clone(),
@@ -52,14 +96,40 @@ pub fn run(skill_path: &Path) -> Result<(), CliError> {
         }),
     };
 
-    let json = serde_json::to_string_pretty(&properties).map_err(|e| {
-        CliError::SerializationError {
-            message: e.to_string(),
-        }
-    })?;
+    let output = serialize_properties(&properties, format, compact)?;
+    println!("{output}");
 
-    println!("{json}");
     Ok(())
+}
+
+/// Serializes properties to the specified format.
+fn serialize_properties(
+    properties: &SkillProperties,
+    format: OutputFormat,
+    compact: bool,
+) -> Result<String, CliError> {
+    match format {
+        OutputFormat::Json => {
+            if compact {
+                serde_json::to_string(properties)
+            } else {
+                serde_json::to_string_pretty(properties)
+            }
+            .map_err(|e| CliError::SerializationError {
+                message: e.to_string(),
+            })
+        }
+        OutputFormat::Yaml => serde_yaml::to_string(properties)
+            .map(|s| s.trim_end().to_string())
+            .map_err(|e| CliError::SerializationError {
+                message: e.to_string(),
+            }),
+        OutputFormat::Toml => toml::to_string_pretty(properties).map_err(|e| {
+            CliError::SerializationError {
+                message: e.to_string(),
+            }
+        }),
+    }
 }
 
 #[cfg(test)]
@@ -68,7 +138,7 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    fn create_skill_dir(temp: &TempDir, name: &str, content: &str) -> std::path::PathBuf {
+    fn create_skill_dir(temp: &TempDir, name: &str, content: &str) -> PathBuf {
         let skill_dir = temp.path().join(name);
         fs::create_dir(&skill_dir).ok();
         fs::write(skill_dir.join("SKILL.md"), content).ok();
@@ -108,7 +178,12 @@ metadata:
         let temp = temp.as_ref();
         if let Some(temp) = temp {
             let skill_dir = create_skill_dir(temp, "my-skill", &minimal_skill_content("my-skill"));
-            let result = run(&skill_dir);
+            let result = run(
+                skill_dir.to_str().unwrap_or("."),
+                OutputFormat::Json,
+                false,
+                OutputMode::Quiet,
+            );
             assert!(result.is_ok());
         }
     }
@@ -119,14 +194,24 @@ metadata:
         let temp = temp.as_ref();
         if let Some(temp) = temp {
             let skill_dir = create_skill_dir(temp, "my-skill", &full_skill_content("my-skill"));
-            let result = run(&skill_dir);
+            let result = run(
+                skill_dir.to_str().unwrap_or("."),
+                OutputFormat::Json,
+                false,
+                OutputMode::Quiet,
+            );
             assert!(result.is_ok());
         }
     }
 
     #[test]
     fn run_fails_for_nonexistent_path() {
-        let result = run(Path::new("/nonexistent/path"));
+        let result = run(
+            "/nonexistent/path",
+            OutputFormat::Json,
+            false,
+            OutputMode::Quiet,
+        );
         assert!(result.is_err());
     }
 
@@ -174,5 +259,88 @@ metadata:
             assert!(json.contains("\"compatibility\":\"Requires docker\""));
             assert!(json.contains("\"author\":\"test\""));
         }
+    }
+
+    #[test]
+    fn serialize_properties_json_pretty() {
+        let props = SkillProperties {
+            name: "test".to_string(),
+            description: "Test.".to_string(),
+            license: None,
+            compatibility: None,
+            metadata: None,
+        };
+
+        let result = serialize_properties(&props, OutputFormat::Json, false);
+        assert!(result.is_ok());
+        let json = result.ok();
+        if let Some(json) = json {
+            // Pretty format has newlines
+            assert!(json.contains('\n'));
+        }
+    }
+
+    #[test]
+    fn serialize_properties_json_compact() {
+        let props = SkillProperties {
+            name: "test".to_string(),
+            description: "Test.".to_string(),
+            license: None,
+            compatibility: None,
+            metadata: None,
+        };
+
+        let result = serialize_properties(&props, OutputFormat::Json, true);
+        assert!(result.is_ok());
+        let json = result.ok();
+        if let Some(json) = json {
+            // Compact format has no newlines
+            assert!(!json.contains('\n'));
+        }
+    }
+
+    #[test]
+    fn serialize_properties_yaml() {
+        let props = SkillProperties {
+            name: "test".to_string(),
+            description: "Test.".to_string(),
+            license: Some("MIT".to_string()),
+            compatibility: None,
+            metadata: None,
+        };
+
+        let result = serialize_properties(&props, OutputFormat::Yaml, false);
+        assert!(result.is_ok());
+        let yaml = result.ok();
+        if let Some(yaml) = yaml {
+            assert!(yaml.contains("name: test"));
+            assert!(yaml.contains("license: MIT"));
+        }
+    }
+
+    #[test]
+    fn serialize_properties_toml() {
+        let props = SkillProperties {
+            name: "test".to_string(),
+            description: "Test.".to_string(),
+            license: Some("MIT".to_string()),
+            compatibility: None,
+            metadata: None,
+        };
+
+        let result = serialize_properties(&props, OutputFormat::Toml, false);
+        assert!(result.is_ok());
+        let toml_str = result.ok();
+        if let Some(toml_str) = toml_str {
+            assert!(toml_str.contains("name = \"test\""));
+            assert!(toml_str.contains("license = \"MIT\""));
+        }
+    }
+
+    #[test]
+    fn read_path_returns_path_for_regular_arg() {
+        let path = read_path("/some/path");
+        assert!(path.is_ok());
+        assert_eq!(path.ok(), Some(PathBuf::from("/some/path")));
     }
 }

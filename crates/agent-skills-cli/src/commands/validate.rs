@@ -1,21 +1,89 @@
 //! Validate command implementation.
 
-use std::path::Path;
+use std::io::{self, BufRead};
+use std::path::{Path, PathBuf};
 
 use agent_skills::SkillDirectory;
 
 use crate::error::CliError;
+use crate::output_mode::OutputMode;
 
-/// Validates a skill directory.
+/// Reads paths from the given source (file path or "-" for stdin).
+fn read_paths(path_arg: &str) -> Result<Vec<PathBuf>, CliError> {
+    if path_arg == "-" {
+        read_paths_from_stdin()
+    } else {
+        Ok(vec![PathBuf::from(path_arg)])
+    }
+}
+
+/// Reads paths from stdin, one per line.
+fn read_paths_from_stdin() -> Result<Vec<PathBuf>, CliError> {
+    let stdin = io::stdin();
+    let paths: Result<Vec<_>, _> = stdin
+        .lock()
+        .lines()
+        .filter_map(|line| {
+            match line {
+                Ok(l) => {
+                    let trimmed = l.trim();
+                    if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(Ok(PathBuf::from(trimmed)))
+                    }
+                }
+                Err(e) => Some(Err(CliError::StdinError {
+                    message: e.to_string(),
+                })),
+            }
+        })
+        .collect();
+
+    let paths = paths?;
+
+    if paths.is_empty() {
+        return Err(CliError::NoPathsProvided);
+    }
+
+    Ok(paths)
+}
+
+/// Validates skill directories.
 ///
-/// Outputs "Valid skill: <path>" to stdout on success.
+/// Outputs "Valid skill: <path>" to stderr on success (respects output mode).
 ///
 /// # Errors
 ///
 /// Returns `CliError` if:
 /// - The path doesn't exist
 /// - The skill is invalid
-pub fn run(skill_path: &Path) -> Result<(), CliError> {
+/// - Reading from stdin fails
+pub fn run(path_arg: &str, output_mode: OutputMode) -> Result<(), CliError> {
+    let paths = read_paths(path_arg)?;
+
+    for (i, path) in paths.iter().enumerate() {
+        if output_mode.show_progress() && paths.len() > 1 {
+            eprintln!(
+                "[{}/{}] Validating: {}",
+                i + 1,
+                paths.len(),
+                path.display()
+            );
+        }
+
+        validate_single(path)?;
+
+        if output_mode.show_info() {
+            eprintln!("Valid skill: {}", path.display());
+        }
+    }
+
+    Ok(())
+}
+
+/// Validates a single skill path.
+fn validate_single(skill_path: &Path) -> Result<(), CliError> {
     let skill_path = super::resolve_skill_path(skill_path)?;
 
     SkillDirectory::load(&skill_path).map_err(|e| CliError::LoadError {
@@ -23,7 +91,6 @@ pub fn run(skill_path: &Path) -> Result<(), CliError> {
         message: e.to_string(),
     })?;
 
-    println!("Valid skill: {}", skill_path.display());
     Ok(())
 }
 
@@ -33,7 +100,7 @@ mod tests {
     use std::fs;
     use tempfile::TempDir;
 
-    fn create_skill_dir(temp: &TempDir, name: &str, content: &str) -> std::path::PathBuf {
+    fn create_skill_dir(temp: &TempDir, name: &str, content: &str) -> PathBuf {
         let skill_dir = temp.path().join(name);
         fs::create_dir(&skill_dir).ok();
         fs::write(skill_dir.join("SKILL.md"), content).ok();
@@ -57,7 +124,7 @@ description: Test skill.
         let temp = temp.as_ref();
         if let Some(temp) = temp {
             let skill_dir = create_skill_dir(temp, "my-skill", &minimal_skill_content("my-skill"));
-            let result = run(&skill_dir);
+            let result = run(skill_dir.to_str().unwrap_or("."), OutputMode::Quiet);
             assert!(result.is_ok());
         }
     }
@@ -68,14 +135,14 @@ description: Test skill.
         let temp = temp.as_ref();
         if let Some(temp) = temp {
             let skill_dir = create_skill_dir(temp, "my-skill", "invalid content");
-            let result = run(&skill_dir);
+            let result = run(skill_dir.to_str().unwrap_or("."), OutputMode::Quiet);
             assert!(result.is_err());
         }
     }
 
     #[test]
     fn run_fails_for_nonexistent_path() {
-        let result = run(Path::new("/nonexistent/path"));
+        let result = run("/nonexistent/path", OutputMode::Quiet);
         assert!(result.is_err());
         if let Err(CliError::PathNotFound { .. }) = result {
             // Expected
@@ -91,8 +158,46 @@ description: Test skill.
         if let Some(temp) = temp {
             let skill_dir = create_skill_dir(temp, "my-skill", &minimal_skill_content("my-skill"));
             let skill_md = skill_dir.join("SKILL.md");
-            let result = run(&skill_md);
+            let result = run(skill_md.to_str().unwrap_or("."), OutputMode::Quiet);
             assert!(result.is_ok());
+        }
+    }
+
+    #[test]
+    fn read_paths_returns_single_path_for_regular_arg() {
+        let paths = read_paths("/some/path");
+        assert!(paths.is_ok());
+        let paths = paths.ok();
+        if let Some(paths) = paths {
+            assert_eq!(paths.len(), 1);
+            assert_eq!(paths[0], PathBuf::from("/some/path"));
+        }
+    }
+
+    #[test]
+    fn validate_single_succeeds_for_valid_skill() {
+        let temp = TempDir::new().ok();
+        let temp = temp.as_ref();
+        if let Some(temp) = temp {
+            let skill_dir = create_skill_dir(temp, "my-skill", &minimal_skill_content("my-skill"));
+            let result = validate_single(&skill_dir);
+            assert!(result.is_ok());
+        }
+    }
+
+    #[test]
+    fn validate_single_fails_for_invalid_skill() {
+        let temp = TempDir::new().ok();
+        let temp = temp.as_ref();
+        if let Some(temp) = temp {
+            let skill_dir = create_skill_dir(temp, "my-skill", "invalid content");
+            let result = validate_single(&skill_dir);
+            assert!(result.is_err());
+            if let Err(CliError::LoadError { .. }) = result {
+                // Expected
+            } else {
+                panic!("Expected LoadError");
+            }
         }
     }
 }
