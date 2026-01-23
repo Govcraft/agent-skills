@@ -1,0 +1,8 @@
+# Hidden files and directories (except .gitignore)
+.*
+!.gitignore
+
+# Text and markdown files (except README.md)
+*.txt
+*.md
+!README.md
