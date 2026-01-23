@@ -19,6 +19,8 @@ tempfile = "3.24.0"
 unsafe_code = "forbid"
 
 [lints.clippy]
-all = "deny"
-pedantic = "warn"
-nursery = "warn"
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"

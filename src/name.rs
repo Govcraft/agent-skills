@@ -193,6 +193,7 @@ fn validate_skill_name(name: &str) -> Result<(), SkillNameError> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

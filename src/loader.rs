@@ -301,6 +301,7 @@ fn read_file_as_bytes(path: &Path) -> Result<Vec<u8>, LoadError> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
@@ -463,7 +464,7 @@ description: Test skill.
         let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"));
         let assets_dir = skill_dir.join("assets");
         fs::create_dir(&assets_dir).unwrap();
-        fs::write(assets_dir.join("data.bin"), &[0x00, 0x01, 0x02]).unwrap();
+        fs::write(assets_dir.join("data.bin"), [0x00, 0x01, 0x02]).unwrap();
 
         let dir = SkillDirectory::load(&skill_dir).unwrap();
         let bytes = dir.read_asset("data.bin").unwrap();

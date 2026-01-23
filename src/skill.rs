@@ -232,6 +232,7 @@ fn parse_frontmatter(yaml: &str) -> Result<Frontmatter, ParseError> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 

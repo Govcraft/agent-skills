@@ -135,6 +135,7 @@ const fn validate_compatibility(compat: &str) -> Result<(), CompatibilityError> 
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
