@@ -14,8 +14,17 @@ pub const BRIGHT_BLACK: &str = "\x1b[90m";
 /// ANSI escape code for bright red (error labels).
 pub const BRIGHT_RED: &str = "\x1b[91m";
 
+/// ANSI escape code for bright green (success indicators).
+pub const BRIGHT_GREEN: &str = "\x1b[92m";
+
 /// ANSI escape code to reset all formatting.
 pub const RESET: &str = "\x1b[0m";
+
+/// Unicode checkmark symbol.
+pub const CHECKMARK: &str = "✓";
+
+/// Unicode cross symbol.
+pub const CROSS: &str = "✗";
 
 /// Configuration for terminal color output.
 ///
@@ -124,6 +133,38 @@ pub fn error_label(text: &str, config: ColorConfig) -> String {
     }
 }
 
+/// Returns a green checkmark symbol for success indicators.
+///
+/// # Arguments
+/// * `config` - Color configuration
+///
+/// # Returns
+/// A green checkmark if colors are enabled, otherwise a plain checkmark.
+#[must_use]
+pub fn success_symbol(config: ColorConfig) -> String {
+    if config.is_enabled() {
+        format!("{BRIGHT_GREEN}{CHECKMARK}{RESET}")
+    } else {
+        CHECKMARK.to_string()
+    }
+}
+
+/// Returns a red cross symbol for error indicators.
+///
+/// # Arguments
+/// * `config` - Color configuration
+///
+/// # Returns
+/// A red cross if colors are enabled, otherwise a plain cross.
+#[must_use]
+pub fn error_symbol(config: ColorConfig) -> String {
+    if config.is_enabled() {
+        format!("{BRIGHT_RED}{CROSS}{RESET}")
+    } else {
+        CROSS.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -200,5 +241,33 @@ mod tests {
         let config = ColorConfig::new(false);
         let result = error_label("Error:", config);
         assert_eq!(result, "Error:");
+    }
+
+    #[test]
+    fn success_symbol_with_colors_enabled() {
+        let config = ColorConfig::new(true);
+        let result = success_symbol(config);
+        assert_eq!(result, "\x1b[92m✓\x1b[0m");
+    }
+
+    #[test]
+    fn success_symbol_with_colors_disabled() {
+        let config = ColorConfig::new(false);
+        let result = success_symbol(config);
+        assert_eq!(result, "✓");
+    }
+
+    #[test]
+    fn error_symbol_with_colors_enabled() {
+        let config = ColorConfig::new(true);
+        let result = error_symbol(config);
+        assert_eq!(result, "\x1b[91m✗\x1b[0m");
+    }
+
+    #[test]
+    fn error_symbol_with_colors_disabled() {
+        let config = ColorConfig::new(false);
+        let result = error_symbol(config);
+        assert_eq!(result, "✗");
     }
 }

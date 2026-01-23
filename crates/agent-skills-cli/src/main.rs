@@ -222,8 +222,9 @@ fn main() -> StdExitCode {
             if output_mode.is_json() {
                 eprintln!("{}", e.to_json());
             } else {
+                let symbol = color::error_symbol(color_config);
                 let error_label = color::error_label("Error:", color_config);
-                eprintln!("{error_label} {e}");
+                eprintln!("{symbol} {error_label} {e}");
                 eprintln!();
                 let hint_text = color::summary(&format!("Hint: {}", e.suggestion()), color_config);
                 eprintln!("{hint_text}");

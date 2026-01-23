@@ -76,9 +76,10 @@ pub fn run(
 
         if output_mode.show_info() {
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("skill");
+            let symbol = color::success_symbol(color_config);
             let colored_name = color::skill_name(name, color_config);
             let colored_path = color::path(&format!("({})", path.display()), color_config);
-            eprintln!("Valid skill: {colored_name} {colored_path}");
+            eprintln!("{symbol} {colored_name} {colored_path}");
         }
     }
 
