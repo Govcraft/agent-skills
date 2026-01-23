@@ -1,11 +1,13 @@
-# Hidden files and directories (except .gitignore)
+# Hidden files and directories (except .gitignore and .github)
 .*
 !.gitignore
+!.github
 
-# Text and markdown files (except README.md)
+# Text and markdown files (except README.md files)
 *.txt
 *.md
 !README.md
+!**/README.md
 
 
 # Added by cargo

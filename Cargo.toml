@@ -9,6 +9,7 @@ members = [
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/Govcraft/agent-skills"
+homepage = "https://github.com/Govcraft/agent-skills"
 authors = ["Roland Rodriguez <roland@govcraft.ai>"]
 
 [workspace.lints.rust]
@@ -20,3 +21,8 @@ pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
 unwrap_used = "deny"
 expect_used = "deny"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
