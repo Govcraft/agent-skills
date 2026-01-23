@@ -19,3 +19,5 @@ install-updater = false
 publish-jobs = ["npm"]
 # npm package scope
 npm-package = "@govcraft/agent-skills"
+# Allow manual edits to generated workflow files
+allow-dirty = ["ci"]
