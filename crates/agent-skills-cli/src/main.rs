@@ -181,6 +181,7 @@ enum Commands {
   agent-skills list ./skills
   agent-skills list --long ./skills
   agent-skills list --check ./skills
+  agent-skills list --failed ./skills
   agent-skills list --paths ./skills | xargs -I{} ls {}
   agent-skills list --names ./skills
   agent-skills ls -r ./
@@ -197,6 +198,10 @@ enum Commands {
         /// Validate each skill and show ✓/✗ status
         #[arg(short, long)]
         check: bool,
+
+        /// Show only skills that fail validation (implies --check)
+        #[arg(short, long)]
+        failed: bool,
 
         /// Show full details (path and complete description)
         #[arg(short, long, conflicts_with_all = ["paths", "names"])]
@@ -261,11 +266,14 @@ fn run_command(
             directory,
             recursive,
             check,
+            failed,
             long,
             paths,
             names,
         } => {
             let list_mode = determine_list_mode(*long, *paths, *names);
+            // --failed implies --check
+            let validate = *check || *failed;
             // Disable colors for scripting modes
             let effective_color = if list_mode == ListOutputMode::PathsOnly
                 || list_mode == ListOutputMode::NamesOnly
@@ -277,7 +285,8 @@ fn run_command(
             commands::list::run(
                 directory,
                 *recursive,
-                *check,
+                validate,
+                *failed,
                 list_mode,
                 output_mode,
                 effective_color,

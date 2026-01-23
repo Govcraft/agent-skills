@@ -62,6 +62,7 @@ pub fn run(
     directory: &Path,
     recursive: bool,
     validate: bool,
+    failed_only: bool,
     list_mode: ListOutputMode,
     output_mode: OutputMode,
     color_config: ColorConfig,
@@ -74,9 +75,21 @@ pub fn run(
 
     let skills = discover_skills(directory, recursive, validate)?;
 
+    // Filter to only failed skills if requested
+    let skills: Vec<_> = if failed_only {
+        skills.into_iter().filter(|s| s.valid == Some(false)).collect()
+    } else {
+        skills
+    };
+
     if skills.is_empty() {
         if output_mode.show_info() {
-            eprintln!("No skills found in '{}'", directory.display());
+            let msg = if failed_only {
+                "No invalid skills found"
+            } else {
+                "No skills found"
+            };
+            eprintln!("{msg} in '{}'", directory.display());
         }
         return Ok(());
     }
@@ -99,7 +112,8 @@ pub fn run(
     }
 
     if output_mode.show_info() {
-        let summary_text = format!("Found {} skill(s)", skills.len());
+        let label = if failed_only { "invalid" } else { "" };
+        let summary_text = format!("Found {} {label}skill(s)", skills.len()).replace("  ", " ");
         eprintln!("{}", color::summary(&summary_text, color_config));
     }
 
@@ -780,6 +794,7 @@ description: {description}
             Path::new("/nonexistent/path"),
             false,
             false,
+            false,
             ListOutputMode::Short,
             OutputMode::Normal,
             ColorConfig::default(),
@@ -798,6 +813,7 @@ description: {description}
         if let Some(temp) = temp.as_ref() {
             let result = run(
                 temp.path(),
+                false,
                 false,
                 false,
                 ListOutputMode::Short,
@@ -823,6 +839,7 @@ description: {description}
                 temp.path(),
                 false,
                 false,
+                false,
                 ListOutputMode::Short,
                 OutputMode::Quiet,
                 ColorConfig::default(),
@@ -839,6 +856,7 @@ description: {description}
 
             let result = run(
                 temp.path(),
+                false,
                 false,
                 false,
                 ListOutputMode::Long,
@@ -859,6 +877,7 @@ description: {description}
                 temp.path(),
                 false,
                 false,
+                false,
                 ListOutputMode::PathsOnly,
                 OutputMode::Quiet,
                 ColorConfig::default(),
@@ -875,6 +894,7 @@ description: {description}
 
             let result = run(
                 temp.path(),
+                false,
                 false,
                 false,
                 ListOutputMode::NamesOnly,
