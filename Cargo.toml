@@ -8,7 +8,8 @@ members = [
 [workspace.package]
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/agentskills/agent-skills-rs"
+repository = "https://github.com/Govcraft/agent-skills"
+authors = ["Roland Rodriguez <roland@govcraft.ai>"]
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
