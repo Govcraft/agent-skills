@@ -39,20 +39,18 @@ fn read_path_from_stdin() -> Result<PathBuf, CliError> {
     let line = stdin
         .lock()
         .lines()
-        .find_map(|line| {
-            match line {
-                Ok(l) => {
-                    let trimmed = l.trim();
-                    if trimmed.is_empty() {
-                        None
-                    } else {
-                        Some(Ok(trimmed.to_string()))
-                    }
+        .find_map(|line| match line {
+            Ok(l) => {
+                let trimmed = l.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(Ok(trimmed.to_string()))
                 }
-                Err(e) => Some(Err(CliError::StdinError {
-                    message: e.to_string(),
-                })),
             }
+            Err(e) => Some(Err(CliError::StdinError {
+                message: e.to_string(),
+            })),
         })
         .ok_or(CliError::NoPathsProvided)??;
 
@@ -109,26 +107,24 @@ fn serialize_properties(
     compact: bool,
 ) -> Result<String, CliError> {
     match format {
-        OutputFormat::Json => {
-            if compact {
-                serde_json::to_string(properties)
-            } else {
-                serde_json::to_string_pretty(properties)
-            }
-            .map_err(|e| CliError::SerializationError {
-                message: e.to_string(),
-            })
+        OutputFormat::Json => if compact {
+            serde_json::to_string(properties)
+        } else {
+            serde_json::to_string_pretty(properties)
         }
+        .map_err(|e| CliError::SerializationError {
+            message: e.to_string(),
+        }),
         OutputFormat::Yaml => serde_yaml::to_string(properties)
             .map(|s| s.trim_end().to_string())
             .map_err(|e| CliError::SerializationError {
                 message: e.to_string(),
             }),
-        OutputFormat::Toml => toml::to_string_pretty(properties).map_err(|e| {
-            CliError::SerializationError {
+        OutputFormat::Toml => {
+            toml::to_string_pretty(properties).map_err(|e| CliError::SerializationError {
                 message: e.to_string(),
-            }
-        }),
+            })
+        }
     }
 }
 

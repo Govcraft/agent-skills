@@ -5,7 +5,7 @@ use std::path::Path;
 
 use agent_skills::SkillDirectory;
 use serde::Serialize;
-use textwrap::{wrap, Options};
+use textwrap::{Options, wrap};
 
 use crate::color::{self, ColorConfig};
 use crate::error::CliError;
@@ -76,11 +76,10 @@ pub fn run(
 
     // JSON mode via global --json flag takes precedence
     if output_mode.is_json() {
-        let json = serde_json::to_string_pretty(&skills).map_err(|e| {
-            CliError::SerializationError {
+        let json =
+            serde_json::to_string_pretty(&skills).map_err(|e| CliError::SerializationError {
                 message: e.to_string(),
-            }
-        })?;
+            })?;
         println!("{json}");
     } else {
         let output = match list_mode {
@@ -121,9 +120,7 @@ fn truncate_description(description: &str, max_len: usize) -> String {
     let target_len = max_len.saturating_sub(3);
 
     // Find the last space within the target length for word boundary
-    let truncate_at = description[..target_len]
-        .rfind(' ')
-        .unwrap_or(target_len);
+    let truncate_at = description[..target_len].rfind(' ').unwrap_or(target_len);
 
     format!("{}...", &description[..truncate_at])
 }
@@ -165,7 +162,13 @@ fn format_short(skills: &[SkillInfo], color_config: ColorConfig) -> String {
         // Calculate padding: name_width - actual name length for alignment
         // The colored name includes ANSI codes which don't take visual space
         let padding = name_width.saturating_sub(skill.name.len());
-        let _ = writeln!(output, "{}{}  {}", colored_name, " ".repeat(padding), truncated);
+        let _ = writeln!(
+            output,
+            "{}{}  {}",
+            colored_name,
+            " ".repeat(padding),
+            truncated
+        );
     }
 
     output

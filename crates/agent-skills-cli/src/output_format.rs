@@ -85,12 +85,18 @@ mod tests {
 
     #[test]
     fn output_format_parses_json() {
-        assert_eq!("json".parse::<OutputFormat>().ok(), Some(OutputFormat::Json));
+        assert_eq!(
+            "json".parse::<OutputFormat>().ok(),
+            Some(OutputFormat::Json)
+        );
     }
 
     #[test]
     fn output_format_parses_yaml() {
-        assert_eq!("yaml".parse::<OutputFormat>().ok(), Some(OutputFormat::Yaml));
+        assert_eq!(
+            "yaml".parse::<OutputFormat>().ok(),
+            Some(OutputFormat::Yaml)
+        );
     }
 
     #[test]
@@ -100,14 +106,26 @@ mod tests {
 
     #[test]
     fn output_format_parses_toml() {
-        assert_eq!("toml".parse::<OutputFormat>().ok(), Some(OutputFormat::Toml));
+        assert_eq!(
+            "toml".parse::<OutputFormat>().ok(),
+            Some(OutputFormat::Toml)
+        );
     }
 
     #[test]
     fn output_format_parses_case_insensitive() {
-        assert_eq!("JSON".parse::<OutputFormat>().ok(), Some(OutputFormat::Json));
-        assert_eq!("YAML".parse::<OutputFormat>().ok(), Some(OutputFormat::Yaml));
-        assert_eq!("TOML".parse::<OutputFormat>().ok(), Some(OutputFormat::Toml));
+        assert_eq!(
+            "JSON".parse::<OutputFormat>().ok(),
+            Some(OutputFormat::Json)
+        );
+        assert_eq!(
+            "YAML".parse::<OutputFormat>().ok(),
+            Some(OutputFormat::Yaml)
+        );
+        assert_eq!(
+            "TOML".parse::<OutputFormat>().ok(),
+            Some(OutputFormat::Toml)
+        );
     }
 
     #[test]

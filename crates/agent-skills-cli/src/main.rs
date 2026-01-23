@@ -222,9 +222,11 @@ fn main() -> StdExitCode {
             if output_mode.is_json() {
                 eprintln!("{}", e.to_json());
             } else {
-                eprintln!("Error: {e}");
+                let error_label = color::error_label("Error:", color_config);
+                eprintln!("{error_label} {e}");
                 eprintln!();
-                eprintln!("Hint: {}", e.suggestion());
+                let hint_text = color::summary(&format!("Hint: {}", e.suggestion()), color_config);
+                eprintln!("{hint_text}");
             }
 
             exit_code.into()
@@ -238,13 +240,17 @@ fn run_command(
     color_config: ColorConfig,
 ) -> Result<(), CliError> {
     match command {
-        Commands::Validate { skill_path } => commands::validate::run(skill_path, output_mode),
+        Commands::Validate { skill_path } => {
+            commands::validate::run(skill_path, output_mode, color_config)
+        }
         Commands::ReadProperties {
             skill_path,
             format,
             compact,
         } => commands::read_properties::run(skill_path, *format, *compact, output_mode),
-        Commands::ToPrompt { skill_paths } => commands::to_prompt::run(skill_paths, output_mode),
+        Commands::ToPrompt { skill_paths } => {
+            commands::to_prompt::run(skill_paths, output_mode, color_config)
+        }
         Commands::List {
             directory,
             recursive,
@@ -261,7 +267,13 @@ fn run_command(
             } else {
                 color_config
             };
-            commands::list::run(directory, *recursive, list_mode, output_mode, effective_color)
+            commands::list::run(
+                directory,
+                *recursive,
+                list_mode,
+                output_mode,
+                effective_color,
+            )
         }
     }
 }

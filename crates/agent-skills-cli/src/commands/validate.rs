@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use agent_skills::SkillDirectory;
 
+use crate::color::{self, ColorConfig};
 use crate::error::CliError;
 use crate::output_mode::OutputMode;
 
@@ -23,20 +24,18 @@ fn read_paths_from_stdin() -> Result<Vec<PathBuf>, CliError> {
     let paths: Result<Vec<_>, _> = stdin
         .lock()
         .lines()
-        .filter_map(|line| {
-            match line {
-                Ok(l) => {
-                    let trimmed = l.trim();
-                    if trimmed.is_empty() {
-                        None
-                    } else {
-                        Some(Ok(PathBuf::from(trimmed)))
-                    }
+        .filter_map(|line| match line {
+            Ok(l) => {
+                let trimmed = l.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(Ok(PathBuf::from(trimmed)))
                 }
-                Err(e) => Some(Err(CliError::StdinError {
-                    message: e.to_string(),
-                })),
             }
+            Err(e) => Some(Err(CliError::StdinError {
+                message: e.to_string(),
+            })),
         })
         .collect();
 
@@ -59,23 +58,27 @@ fn read_paths_from_stdin() -> Result<Vec<PathBuf>, CliError> {
 /// - The path doesn't exist
 /// - The skill is invalid
 /// - Reading from stdin fails
-pub fn run(path_arg: &str, output_mode: OutputMode) -> Result<(), CliError> {
+pub fn run(
+    path_arg: &str,
+    output_mode: OutputMode,
+    color_config: ColorConfig,
+) -> Result<(), CliError> {
     let paths = read_paths(path_arg)?;
 
     for (i, path) in paths.iter().enumerate() {
         if output_mode.show_progress() && paths.len() > 1 {
-            eprintln!(
-                "[{}/{}] Validating: {}",
-                i + 1,
-                paths.len(),
-                path.display()
-            );
+            let colored_name = color::path(&path.display().to_string(), color_config);
+            let count_info = color::summary(&format!("[{}/{}]", i + 1, paths.len()), color_config);
+            eprintln!("{count_info} Validating: {colored_name}");
         }
 
         validate_single(path)?;
 
         if output_mode.show_info() {
-            eprintln!("Valid skill: {}", path.display());
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("skill");
+            let colored_name = color::skill_name(name, color_config);
+            let colored_path = color::path(&format!("({})", path.display()), color_config);
+            eprintln!("Valid skill: {colored_name} {colored_path}");
         }
     }
 
@@ -97,6 +100,7 @@ fn validate_single(skill_path: &Path) -> Result<(), CliError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::color::ColorConfig;
     use std::fs;
     use tempfile::TempDir;
 
@@ -124,7 +128,11 @@ description: Test skill.
         let temp = temp.as_ref();
         if let Some(temp) = temp {
             let skill_dir = create_skill_dir(temp, "my-skill", &minimal_skill_content("my-skill"));
-            let result = run(skill_dir.to_str().unwrap_or("."), OutputMode::Quiet);
+            let result = run(
+                skill_dir.to_str().unwrap_or("."),
+                OutputMode::Quiet,
+                ColorConfig::default(),
+            );
             assert!(result.is_ok());
         }
     }
@@ -135,14 +143,22 @@ description: Test skill.
         let temp = temp.as_ref();
         if let Some(temp) = temp {
             let skill_dir = create_skill_dir(temp, "my-skill", "invalid content");
-            let result = run(skill_dir.to_str().unwrap_or("."), OutputMode::Quiet);
+            let result = run(
+                skill_dir.to_str().unwrap_or("."),
+                OutputMode::Quiet,
+                ColorConfig::default(),
+            );
             assert!(result.is_err());
         }
     }
 
     #[test]
     fn run_fails_for_nonexistent_path() {
-        let result = run("/nonexistent/path", OutputMode::Quiet);
+        let result = run(
+            "/nonexistent/path",
+            OutputMode::Quiet,
+            ColorConfig::default(),
+        );
         assert!(result.is_err());
         if let Err(CliError::PathNotFound { .. }) = result {
             // Expected
@@ -158,7 +174,11 @@ description: Test skill.
         if let Some(temp) = temp {
             let skill_dir = create_skill_dir(temp, "my-skill", &minimal_skill_content("my-skill"));
             let skill_md = skill_dir.join("SKILL.md");
-            let result = run(skill_md.to_str().unwrap_or("."), OutputMode::Quiet);
+            let result = run(
+                skill_md.to_str().unwrap_or("."),
+                OutputMode::Quiet,
+                ColorConfig::default(),
+            );
             assert!(result.is_ok());
         }
     }

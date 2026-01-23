@@ -97,7 +97,9 @@ impl CliError {
                 _ => "Check that the file is accessible and try again.",
             },
             Self::StdinError { .. } => "Ensure stdin contains valid paths, one per line.",
-            Self::NoPathsProvided => "Provide at least one path, or use '-' to read paths from stdin.",
+            Self::NoPathsProvided => {
+                "Provide at least one path, or use '-' to read paths from stdin."
+            }
         }
     }
 
@@ -147,11 +149,7 @@ impl fmt::Display for CliError {
                 write!(f, "path not found: '{}'", path.display())
             }
             Self::LoadError { path, message } => {
-                write!(
-                    f,
-                    "failed to load skill at '{}': {message}",
-                    path.display()
-                )
+                write!(f, "failed to load skill at '{}': {message}", path.display())
             }
             Self::SerializationError { message } => {
                 write!(f, "serialization error: {message}")

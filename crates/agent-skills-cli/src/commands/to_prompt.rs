@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use agent_skills::SkillDirectory;
 
+use crate::color::{self, ColorConfig};
 use crate::error::CliError;
 use crate::output_mode::OutputMode;
 use crate::xml::escape_xml;
@@ -57,18 +58,19 @@ fn read_paths_from_stdin() -> Result<Vec<PathBuf>, CliError> {
 /// - Any skill is invalid
 /// - Path canonicalization fails
 /// - Reading from stdin fails
-pub fn run(path_args: &[String], output_mode: OutputMode) -> Result<(), CliError> {
+pub fn run(
+    path_args: &[String],
+    output_mode: OutputMode,
+    color_config: ColorConfig,
+) -> Result<(), CliError> {
     let paths = read_paths(path_args)?;
     let mut skills_xml = Vec::new();
 
     for (i, path) in paths.iter().enumerate() {
         if output_mode.show_progress() && paths.len() > 1 {
-            eprintln!(
-                "[{}/{}] Processing: {}",
-                i + 1,
-                paths.len(),
-                path.display()
-            );
+            let colored_name = color::skill_name(&path.display().to_string(), color_config);
+            let count_info = color::summary(&format!("({}/{})", i + 1, paths.len()), color_config);
+            eprintln!("Processing {colored_name} {count_info}...");
         }
 
         let skill_path = super::resolve_skill_path(path)?;
@@ -115,6 +117,7 @@ fn format_skill_xml(name: &str, description: &str, location: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::color::ColorConfig;
     use std::fs;
     use tempfile::TempDir;
 
@@ -135,7 +138,11 @@ description: {description}
 
     #[test]
     fn format_skill_xml_basic() {
-        let xml = format_skill_xml("my-skill", "Does something useful.", "/path/to/skill/SKILL.md");
+        let xml = format_skill_xml(
+            "my-skill",
+            "Does something useful.",
+            "/path/to/skill/SKILL.md",
+        );
         assert!(xml.contains("<name>my-skill</name>"));
         assert!(xml.contains("<description>Does something useful.</description>"));
         assert!(xml.contains("<location>/path/to/skill/SKILL.md</location>"));
@@ -143,7 +150,11 @@ description: {description}
 
     #[test]
     fn format_skill_xml_escapes_special_chars() {
-        let xml = format_skill_xml("my-skill", "Does <things> & stuff", "/path/to/skill/SKILL.md");
+        let xml = format_skill_xml(
+            "my-skill",
+            "Does <things> & stuff",
+            "/path/to/skill/SKILL.md",
+        );
         assert!(xml.contains("&lt;things&gt;"));
         assert!(xml.contains("&amp;"));
     }
@@ -157,6 +168,7 @@ description: {description}
             let result = run(
                 &[skill_dir.to_str().unwrap_or(".").to_string()],
                 OutputMode::Quiet,
+                ColorConfig::default(),
             );
             assert!(result.is_ok());
         }
@@ -175,6 +187,7 @@ description: {description}
                     skill2.to_str().unwrap_or(".").to_string(),
                 ],
                 OutputMode::Quiet,
+                ColorConfig::default(),
             );
             assert!(result.is_ok());
         }
@@ -182,7 +195,11 @@ description: {description}
 
     #[test]
     fn run_fails_for_nonexistent_path() {
-        let result = run(&["/nonexistent/path".to_string()], OutputMode::Quiet);
+        let result = run(
+            &["/nonexistent/path".to_string()],
+            OutputMode::Quiet,
+            ColorConfig::default(),
+        );
         assert!(result.is_err());
     }
 
@@ -202,6 +219,7 @@ description: {description}
                     invalid_skill.to_str().unwrap_or(".").to_string(),
                 ],
                 OutputMode::Quiet,
+                ColorConfig::default(),
             );
             assert!(result.is_err());
         }

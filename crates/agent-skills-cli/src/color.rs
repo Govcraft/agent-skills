@@ -11,6 +11,9 @@ pub const BOLD_BRIGHT_CYAN: &str = "\x1b[1;96m";
 /// ANSI escape code for bright black/gray (paths, summary).
 pub const BRIGHT_BLACK: &str = "\x1b[90m";
 
+/// ANSI escape code for bright red (error labels).
+pub const BRIGHT_RED: &str = "\x1b[91m";
+
 /// ANSI escape code to reset all formatting.
 pub const RESET: &str = "\x1b[0m";
 
@@ -104,6 +107,23 @@ pub fn summary(text: &str, config: ColorConfig) -> String {
     }
 }
 
+/// Formats text with the error label color (bright red).
+///
+/// # Arguments
+/// * `text` - The text to colorize
+/// * `config` - Color configuration
+///
+/// # Returns
+/// The text with ANSI codes if colors are enabled, otherwise unchanged.
+#[must_use]
+pub fn error_label(text: &str, config: ColorConfig) -> String {
+    if config.is_enabled() {
+        format!("{BRIGHT_RED}{text}{RESET}")
+    } else {
+        text.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -166,5 +186,19 @@ mod tests {
         let config = ColorConfig::new(false);
         let result = summary("Found 5 skill(s)", config);
         assert_eq!(result, "Found 5 skill(s)");
+    }
+
+    #[test]
+    fn error_label_with_colors_enabled() {
+        let config = ColorConfig::new(true);
+        let result = error_label("Error:", config);
+        assert_eq!(result, "\x1b[91mError:\x1b[0m");
+    }
+
+    #[test]
+    fn error_label_with_colors_disabled() {
+        let config = ColorConfig::new(false);
+        let result = error_label("Error:", config);
+        assert_eq!(result, "Error:");
     }
 }
