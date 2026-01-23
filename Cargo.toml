@@ -1,24 +1,19 @@
-[package]
-name = "agent-skills"
-version = "0.2.0"
+[workspace]
+resolver = "2"
+members = [
+    "crates/agent-skills",
+    "crates/agent-skills-cli",
+]
+
+[workspace.package]
 edition = "2024"
-description = "Parse, validate, and work with Agent Skills as defined by the Agent Skills specification"
 license = "MIT"
 repository = "https://github.com/agentskills/agent-skills-rs"
-keywords = ["agent", "skills", "ai", "llm", "automation"]
-categories = ["parsing", "config"]
 
-[dependencies]
-serde = { version = "1.0.228", features = ["derive"] }
-serde_yaml = "0.9.34"
-
-[dev-dependencies]
-tempfile = "3.24.0"
-
-[lints.rust]
+[workspace.lints.rust]
 unsafe_code = "forbid"
 
-[lints.clippy]
+[workspace.lints.clippy]
 all = { level = "deny", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
