@@ -9,6 +9,7 @@
 //! - `to-prompt <paths...>` - Generate XML block for agent prompts (alias: `prompt`)
 //! - `list <directory>` - List skills in a directory (alias: `ls`)
 
+mod color;
 mod commands;
 mod error;
 mod exit_code;
@@ -21,6 +22,7 @@ use std::process::ExitCode as StdExitCode;
 
 use clap::{Parser, Subcommand};
 
+use color::ColorConfig;
 use commands::list::ListOutputMode;
 use error::CliError;
 use exit_code::ExitCode;
@@ -70,6 +72,12 @@ impl OutputOptions {
         } else {
             Verbosity::Normal
         }
+    }
+
+    /// Returns the color configuration based on flags and TTY detection.
+    #[must_use]
+    pub fn color_config(&self) -> ColorConfig {
+        ColorConfig::detect(self.no_color)
     }
 }
 
@@ -202,8 +210,9 @@ enum Commands {
 fn main() -> StdExitCode {
     let cli = Cli::parse();
     let output_mode = cli.output_mode();
+    let color_config = cli.output.color_config();
 
-    let result = run_command(&cli.command, output_mode);
+    let result = run_command(&cli.command, output_mode, color_config);
 
     match result {
         Ok(()) => ExitCode::Success.into(),
@@ -223,7 +232,11 @@ fn main() -> StdExitCode {
     }
 }
 
-fn run_command(command: &Commands, output_mode: OutputMode) -> Result<(), CliError> {
+fn run_command(
+    command: &Commands,
+    output_mode: OutputMode,
+    color_config: ColorConfig,
+) -> Result<(), CliError> {
     match command {
         Commands::Validate { skill_path } => commands::validate::run(skill_path, output_mode),
         Commands::ReadProperties {
@@ -240,7 +253,15 @@ fn run_command(command: &Commands, output_mode: OutputMode) -> Result<(), CliErr
             names,
         } => {
             let list_mode = determine_list_mode(*long, *paths, *names);
-            commands::list::run(directory, *recursive, list_mode, output_mode)
+            // Disable colors for scripting modes
+            let effective_color = if list_mode == ListOutputMode::PathsOnly
+                || list_mode == ListOutputMode::NamesOnly
+            {
+                ColorConfig::new(false)
+            } else {
+                color_config
+            };
+            commands::list::run(directory, *recursive, list_mode, output_mode, effective_color)
         }
     }
 }

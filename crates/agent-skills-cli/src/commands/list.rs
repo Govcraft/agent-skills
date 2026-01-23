@@ -7,6 +7,7 @@ use agent_skills::SkillDirectory;
 use serde::Serialize;
 use textwrap::{wrap, Options};
 
+use crate::color::{self, ColorConfig};
 use crate::error::CliError;
 use crate::output_mode::OutputMode;
 
@@ -56,6 +57,7 @@ pub fn run(
     recursive: bool,
     list_mode: ListOutputMode,
     output_mode: OutputMode,
+    color_config: ColorConfig,
 ) -> Result<(), CliError> {
     if !directory.exists() {
         return Err(CliError::PathNotFound {
@@ -82,8 +84,8 @@ pub fn run(
         println!("{json}");
     } else {
         let output = match list_mode {
-            ListOutputMode::Short => format_short(&skills),
-            ListOutputMode::Long => format_long(&skills),
+            ListOutputMode::Short => format_short(&skills, color_config),
+            ListOutputMode::Long => format_long(&skills, color_config),
             ListOutputMode::PathsOnly => format_paths_only(&skills),
             ListOutputMode::NamesOnly => format_names_only(&skills),
         };
@@ -91,7 +93,8 @@ pub fn run(
     }
 
     if output_mode.show_info() {
-        eprintln!("Found {} skill(s)", skills.len());
+        let summary_text = format!("Found {} skill(s)", skills.len());
+        eprintln!("{}", color::summary(&summary_text, color_config));
     }
 
     Ok(())
@@ -146,18 +149,23 @@ fn calculate_name_width(skills: &[SkillInfo]) -> usize {
 ///
 /// # Arguments
 /// * `skills` - The skills to format
+/// * `color_config` - Color configuration for output
 ///
 /// # Returns
-/// Formatted output string with name and truncated description.
+/// Formatted output string with name (colored) and truncated description.
 #[must_use]
-fn format_short(skills: &[SkillInfo]) -> String {
+fn format_short(skills: &[SkillInfo], color_config: ColorConfig) -> String {
     let name_width = calculate_name_width(skills);
     let mut output = String::new();
 
     for skill in skills {
+        let colored_name = color::skill_name(&skill.name, color_config);
         let truncated = truncate_description(&skill.description, SHORT_DESCRIPTION_MAX);
-        // Use write! macro which is infallible for String
-        let _ = writeln!(output, "{:<width$}  {}", skill.name, truncated, width = name_width);
+
+        // Calculate padding: name_width - actual name length for alignment
+        // The colored name includes ANSI codes which don't take visual space
+        let padding = name_width.saturating_sub(skill.name.len());
+        let _ = writeln!(output, "{}{}  {}", colored_name, " ".repeat(padding), truncated);
     }
 
     output
@@ -167,11 +175,12 @@ fn format_short(skills: &[SkillInfo]) -> String {
 ///
 /// # Arguments
 /// * `skills` - The skills to format
+/// * `color_config` - Color configuration for output
 ///
 /// # Returns
-/// Formatted output string with name, path, and wrapped description.
+/// Formatted output string with name (colored), path (colored), and wrapped description.
 #[must_use]
-fn format_long(skills: &[SkillInfo]) -> String {
+fn format_long(skills: &[SkillInfo], color_config: ColorConfig) -> String {
     let mut output = String::new();
 
     for (i, skill) in skills.iter().enumerate() {
@@ -179,8 +188,12 @@ fn format_long(skills: &[SkillInfo]) -> String {
             output.push('\n');
         }
 
-        let _ = writeln!(output, "{}", skill.name);
-        let _ = writeln!(output, "{}Path: {}", DESCRIPTION_INDENT, skill.path);
+        let colored_name = color::skill_name(&skill.name, color_config);
+        let path_line = format!("{}Path: {}", DESCRIPTION_INDENT, skill.path);
+        let colored_path = color::path(&path_line, color_config);
+
+        let _ = writeln!(output, "{colored_name}");
+        let _ = writeln!(output, "{colored_path}");
 
         let wrapped = wrap_text(&skill.description, WRAP_WIDTH, DESCRIPTION_INDENT);
         let _ = writeln!(output, "{wrapped}");
@@ -421,7 +434,8 @@ description: {description}
             skill_info("short", "/path/short", "Description one"),
             skill_info("much-longer", "/path/longer", "Description two"),
         ];
-        let output = format_short(&skills);
+        let config = ColorConfig::new(false);
+        let output = format_short(&skills, config);
         let lines: Vec<&str> = output.lines().collect();
         assert_eq!(lines.len(), 2);
 
@@ -438,7 +452,8 @@ description: {description}
             "/path",
             "This is a very long description that should be truncated because it exceeds the limit",
         )];
-        let output = format_short(&skills);
+        let config = ColorConfig::new(false);
+        let output = format_short(&skills, config);
         assert!(output.contains("..."));
         // Original description should not appear in full
         assert!(!output.contains("exceeds the limit"));
@@ -451,8 +466,26 @@ description: {description}
             "/home/user/skills/my-skill",
             "Description",
         )];
-        let output = format_short(&skills);
+        let config = ColorConfig::new(false);
+        let output = format_short(&skills, config);
         assert!(!output.contains("/home/user/skills"));
+    }
+
+    #[test]
+    fn format_short_with_colors_includes_ansi_codes() {
+        let skills = vec![skill_info("my-skill", "/path", "Description")];
+        let config = ColorConfig::new(true);
+        let output = format_short(&skills, config);
+        assert!(output.contains("\x1b[1;96m")); // Bold bright cyan
+        assert!(output.contains("\x1b[0m")); // Reset
+    }
+
+    #[test]
+    fn format_short_without_colors_excludes_ansi_codes() {
+        let skills = vec![skill_info("my-skill", "/path", "Description")];
+        let config = ColorConfig::new(false);
+        let output = format_short(&skills, config);
+        assert!(!output.contains("\x1b["));
     }
 
     // Format long tests
@@ -463,7 +496,8 @@ description: {description}
             "/home/user/skills/my-skill",
             "A complete description that would normally be truncated in short mode.",
         )];
-        let output = format_long(&skills);
+        let config = ColorConfig::new(false);
+        let output = format_long(&skills, config);
         assert!(output.contains("my-skill"));
         assert!(output.contains("Path: /home/user/skills/my-skill"));
         assert!(output.contains("complete description"));
@@ -476,7 +510,8 @@ description: {description}
             skill_info("skill-one", "/path/one", "First skill"),
             skill_info("skill-two", "/path/two", "Second skill"),
         ];
-        let output = format_long(&skills);
+        let config = ColorConfig::new(false);
+        let output = format_long(&skills, config);
         // Should have blank line between skills
         assert!(output.contains("\n\n"));
     }
@@ -484,7 +519,8 @@ description: {description}
     #[test]
     fn format_long_indents_path_and_description() {
         let skills = vec![skill_info("my-skill", "/path", "Description")];
-        let output = format_long(&skills);
+        let config = ColorConfig::new(false);
+        let output = format_long(&skills, config);
         let lines: Vec<&str> = output.lines().collect();
 
         // Name should not be indented
@@ -493,6 +529,23 @@ description: {description}
         assert!(lines[1].starts_with("  Path:"));
         // Description should be indented
         assert!(lines[2].starts_with("  "));
+    }
+
+    #[test]
+    fn format_long_with_colors_includes_ansi_codes_for_name_and_path() {
+        let skills = vec![skill_info("my-skill", "/path", "Description")];
+        let config = ColorConfig::new(true);
+        let output = format_long(&skills, config);
+        assert!(output.contains("\x1b[1;96m")); // Bold bright cyan for name
+        assert!(output.contains("\x1b[90m")); // Bright black for path
+    }
+
+    #[test]
+    fn format_long_without_colors_excludes_ansi_codes() {
+        let skills = vec![skill_info("my-skill", "/path", "Description")];
+        let config = ColorConfig::new(false);
+        let output = format_long(&skills, config);
+        assert!(!output.contains("\x1b["));
     }
 
     // Format paths only tests
@@ -518,6 +571,13 @@ description: {description}
         assert!(output.contains("/path/to/skill"));
     }
 
+    #[test]
+    fn format_paths_only_never_has_colors() {
+        let skills = vec![skill_info("my-skill", "/path", "Description")];
+        let output = format_paths_only(&skills);
+        assert!(!output.contains("\x1b["));
+    }
+
     // Format names only tests
     #[test]
     fn format_names_only_outputs_one_name_per_line() {
@@ -539,6 +599,13 @@ description: {description}
         assert!(output.contains("my-skill"));
         assert!(!output.contains("/path"));
         assert!(!output.contains("description"));
+    }
+
+    #[test]
+    fn format_names_only_never_has_colors() {
+        let skills = vec![skill_info("my-skill", "/path", "Description")];
+        let output = format_names_only(&skills);
+        assert!(!output.contains("\x1b["));
     }
 
     // Wrap text tests
@@ -644,6 +711,7 @@ description: {description}
             false,
             ListOutputMode::Short,
             OutputMode::Normal,
+            ColorConfig::default(),
         );
         assert!(result.is_err());
         if let Err(CliError::PathNotFound { .. }) = result {
@@ -657,7 +725,13 @@ description: {description}
     fn run_succeeds_for_empty_directory() {
         let temp = TempDir::new().ok();
         if let Some(temp) = temp.as_ref() {
-            let result = run(temp.path(), false, ListOutputMode::Short, OutputMode::Quiet);
+            let result = run(
+                temp.path(),
+                false,
+                ListOutputMode::Short,
+                OutputMode::Quiet,
+                ColorConfig::default(),
+            );
             assert!(result.is_ok());
         }
     }
@@ -673,7 +747,13 @@ description: {description}
             );
 
             // We can't easily capture stdout in a unit test, but we can verify it doesn't panic
-            let result = run(temp.path(), false, ListOutputMode::Short, OutputMode::Quiet);
+            let result = run(
+                temp.path(),
+                false,
+                ListOutputMode::Short,
+                OutputMode::Quiet,
+                ColorConfig::default(),
+            );
             assert!(result.is_ok());
         }
     }
@@ -684,7 +764,13 @@ description: {description}
         if let Some(temp) = temp.as_ref() {
             create_skill_dir(temp.path(), "test-skill");
 
-            let result = run(temp.path(), false, ListOutputMode::Long, OutputMode::Quiet);
+            let result = run(
+                temp.path(),
+                false,
+                ListOutputMode::Long,
+                OutputMode::Quiet,
+                ColorConfig::default(),
+            );
             assert!(result.is_ok());
         }
     }
@@ -700,6 +786,7 @@ description: {description}
                 false,
                 ListOutputMode::PathsOnly,
                 OutputMode::Quiet,
+                ColorConfig::default(),
             );
             assert!(result.is_ok());
         }
@@ -716,6 +803,7 @@ description: {description}
                 false,
                 ListOutputMode::NamesOnly,
                 OutputMode::Quiet,
+                ColorConfig::default(),
             );
             assert!(result.is_ok());
         }
