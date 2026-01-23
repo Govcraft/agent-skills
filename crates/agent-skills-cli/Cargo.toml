@@ -1,6 +1,6 @@
 [package]
 name = "agent-skills-cli"
-version = "0.2.0"
+version = "0.3.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -16,6 +16,7 @@ clap = { version = "4.5.54", features = ["derive"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 serde_yaml = "0.9.34"
+textwrap = "0.16.2"
 toml = "0.9.11"
 
 [dev-dependencies]

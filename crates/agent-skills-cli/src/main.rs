@@ -19,8 +19,9 @@ pub mod xml;
 use std::path::PathBuf;
 use std::process::ExitCode as StdExitCode;
 
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 
+use commands::list::ListOutputMode;
 use error::CliError;
 use exit_code::ExitCode;
 use output_format::OutputFormat;
@@ -170,8 +171,11 @@ enum Commands {
     #[command(visible_alias = "ls")]
     #[command(after_help = r#"Examples:
   agent-skills list ./skills
-  agent-skills list --recursive ./
-  agent-skills ls ./plugins --format json"#)]
+  agent-skills list --long ./skills
+  agent-skills list --paths ./skills | xargs -I{} ls {}
+  agent-skills list --names ./skills
+  agent-skills ls -r ./
+  agent-skills --json list ./skills"#)]
     List {
         /// Directory to search for skills
         #[arg(default_value = ".")]
@@ -181,19 +185,18 @@ enum Commands {
         #[arg(short, long)]
         recursive: bool,
 
-        /// Output format
-        #[arg(short, long, default_value = "text", value_enum)]
-        format: ListFormat,
-    },
-}
+        /// Show full details (path and complete description)
+        #[arg(short, long, conflicts_with_all = ["paths", "names"])]
+        long: bool,
 
-/// Output format for the list command.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum ListFormat {
-    /// Plain text, one skill per line (tab-separated)
-    Text,
-    /// JSON array of skill objects
-    Json,
+        /// Show only paths (for scripting)
+        #[arg(short, long, conflicts_with_all = ["long", "names"])]
+        paths: bool,
+
+        /// Show only names (for scripting)
+        #[arg(short, long, conflicts_with_all = ["long", "paths"])]
+        names: bool,
+    },
 }
 
 fn main() -> StdExitCode {
@@ -232,8 +235,28 @@ fn run_command(command: &Commands, output_mode: OutputMode) -> Result<(), CliErr
         Commands::List {
             directory,
             recursive,
-            format,
-        } => commands::list::run(directory, *recursive, *format, output_mode),
+            long,
+            paths,
+            names,
+        } => {
+            let list_mode = determine_list_mode(*long, *paths, *names);
+            commands::list::run(directory, *recursive, list_mode, output_mode)
+        }
+    }
+}
+
+/// Determines the list output mode from CLI flags.
+///
+/// Priority: paths > names > long > short (default)
+const fn determine_list_mode(long: bool, paths: bool, names: bool) -> ListOutputMode {
+    if paths {
+        ListOutputMode::PathsOnly
+    } else if names {
+        ListOutputMode::NamesOnly
+    } else if long {
+        ListOutputMode::Long
+    } else {
+        ListOutputMode::Short
     }
 }
 
