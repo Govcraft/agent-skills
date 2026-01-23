@@ -77,7 +77,10 @@ pub fn run(
 
     // Filter to only failed skills if requested
     let skills: Vec<_> = if failed_only {
-        skills.into_iter().filter(|s| s.valid == Some(false)).collect()
+        skills
+            .into_iter()
+            .filter(|s| s.valid == Some(false))
+            .collect()
     } else {
         skills
     };
@@ -187,10 +190,10 @@ fn format_short(skills: &[SkillInfo], color_config: ColorConfig) -> String {
         let colored_name = color::skill_name(&skill.name, color_config);
         let truncated = if skill.valid == Some(false) {
             // Show error message for invalid skills
-            skill
-                .error
-                .as_deref()
-                .map_or_else(|| "Invalid skill".to_string(), |e| truncate_description(e, SHORT_DESCRIPTION_MAX))
+            skill.error.as_deref().map_or_else(
+                || "Invalid skill".to_string(),
+                |e| truncate_description(e, SHORT_DESCRIPTION_MAX),
+            )
         } else {
             truncate_description(&skill.description, SHORT_DESCRIPTION_MAX)
         };
@@ -244,10 +247,10 @@ fn format_long(skills: &[SkillInfo], color_config: ColorConfig) -> String {
 
         // Show error or description
         let content = if skill.valid == Some(false) {
-            skill
-                .error
-                .as_deref()
-                .map_or_else(|| "Invalid skill".to_string(), |e| format!("{DESCRIPTION_INDENT}Error: {e}"))
+            skill.error.as_deref().map_or_else(
+                || "Invalid skill".to_string(),
+                |e| format!("{DESCRIPTION_INDENT}Error: {e}"),
+            )
         } else {
             wrap_text(&skill.description, WRAP_WIDTH, DESCRIPTION_INDENT)
         };
