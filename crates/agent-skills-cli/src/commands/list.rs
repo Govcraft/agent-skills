@@ -43,6 +43,12 @@ pub struct SkillInfo {
     name: String,
     description: String,
     path: String,
+    /// Validation status: Some(true) = valid, Some(false) = invalid, None = not checked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    valid: Option<bool>,
+    /// Error message if validation failed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
 }
 
 /// Lists skills in a directory.
@@ -55,6 +61,7 @@ pub struct SkillInfo {
 pub fn run(
     directory: &Path,
     recursive: bool,
+    validate: bool,
     list_mode: ListOutputMode,
     output_mode: OutputMode,
     color_config: ColorConfig,
@@ -65,7 +72,7 @@ pub fn run(
         });
     }
 
-    let skills = discover_skills(directory, recursive)?;
+    let skills = discover_skills(directory, recursive, validate)?;
 
     if skills.is_empty() {
         if output_mode.show_info() {
@@ -156,15 +163,31 @@ fn format_short(skills: &[SkillInfo], color_config: ColorConfig) -> String {
     let mut output = String::new();
 
     for skill in skills {
+        // Show validation symbol if validation was performed
+        let symbol = match skill.valid {
+            Some(true) => format!("{} ", color::success_symbol(color_config)),
+            Some(false) => format!("{} ", color::error_symbol(color_config)),
+            None => String::new(),
+        };
+
         let colored_name = color::skill_name(&skill.name, color_config);
-        let truncated = truncate_description(&skill.description, SHORT_DESCRIPTION_MAX);
+        let truncated = if skill.valid == Some(false) {
+            // Show error message for invalid skills
+            skill
+                .error
+                .as_deref()
+                .map_or_else(|| "Invalid skill".to_string(), |e| truncate_description(e, SHORT_DESCRIPTION_MAX))
+        } else {
+            truncate_description(&skill.description, SHORT_DESCRIPTION_MAX)
+        };
 
         // Calculate padding: name_width - actual name length for alignment
         // The colored name includes ANSI codes which don't take visual space
         let padding = name_width.saturating_sub(skill.name.len());
         let _ = writeln!(
             output,
-            "{}{}  {}",
+            "{}{}{}  {}",
+            symbol,
             colored_name,
             " ".repeat(padding),
             truncated
@@ -191,15 +214,30 @@ fn format_long(skills: &[SkillInfo], color_config: ColorConfig) -> String {
             output.push('\n');
         }
 
+        // Show validation symbol if validation was performed
+        let symbol = match skill.valid {
+            Some(true) => format!("{} ", color::success_symbol(color_config)),
+            Some(false) => format!("{} ", color::error_symbol(color_config)),
+            None => String::new(),
+        };
+
         let colored_name = color::skill_name(&skill.name, color_config);
         let path_line = format!("{}Path: {}", DESCRIPTION_INDENT, skill.path);
         let colored_path = color::path(&path_line, color_config);
 
-        let _ = writeln!(output, "{colored_name}");
+        let _ = writeln!(output, "{symbol}{colored_name}");
         let _ = writeln!(output, "{colored_path}");
 
-        let wrapped = wrap_text(&skill.description, WRAP_WIDTH, DESCRIPTION_INDENT);
-        let _ = writeln!(output, "{wrapped}");
+        // Show error or description
+        let content = if skill.valid == Some(false) {
+            skill
+                .error
+                .as_deref()
+                .map_or_else(|| "Invalid skill".to_string(), |e| format!("{DESCRIPTION_INDENT}Error: {e}"))
+        } else {
+            wrap_text(&skill.description, WRAP_WIDTH, DESCRIPTION_INDENT)
+        };
+        let _ = writeln!(output, "{content}");
     }
 
     output
@@ -260,10 +298,14 @@ fn wrap_text(text: &str, width: usize, indent: &str) -> String {
 }
 
 /// Discovers skills in a directory.
-fn discover_skills(directory: &Path, recursive: bool) -> Result<Vec<SkillInfo>, CliError> {
+fn discover_skills(
+    directory: &Path,
+    recursive: bool,
+    validate: bool,
+) -> Result<Vec<SkillInfo>, CliError> {
     let mut skills = Vec::new();
 
-    discover_skills_in_dir(directory, recursive, &mut skills)?;
+    discover_skills_in_dir(directory, recursive, validate, &mut skills)?;
 
     skills.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(skills)
@@ -273,6 +315,7 @@ fn discover_skills(directory: &Path, recursive: bool) -> Result<Vec<SkillInfo>, 
 fn discover_skills_in_dir(
     directory: &Path,
     recursive: bool,
+    validate: bool,
     skills: &mut Vec<SkillInfo>,
 ) -> Result<(), CliError> {
     let entries = std::fs::read_dir(directory).map_err(|e| CliError::IoError {
@@ -293,20 +336,42 @@ fn discover_skills_in_dir(
         if path.is_dir() {
             // Check if this directory is a skill (has SKILL.md)
             let skill_md = path.join("SKILL.md");
-            if skill_md.exists()
-                && let Ok(dir) = SkillDirectory::load(&path)
-            {
-                let skill = dir.skill();
-                skills.push(SkillInfo {
-                    name: skill.name().as_str().to_string(),
-                    description: skill.description().as_str().to_string(),
-                    path: path.display().to_string(),
-                });
+            if skill_md.exists() {
+                match SkillDirectory::load(&path) {
+                    Ok(dir) => {
+                        let skill = dir.skill();
+                        skills.push(SkillInfo {
+                            name: skill.name().as_str().to_string(),
+                            description: skill.description().as_str().to_string(),
+                            path: path.display().to_string(),
+                            valid: if validate { Some(true) } else { None },
+                            error: None,
+                        });
+                    }
+                    Err(e) if validate => {
+                        // Include invalid skills when validating
+                        let name = path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("unknown")
+                            .to_string();
+                        skills.push(SkillInfo {
+                            name,
+                            description: String::new(),
+                            path: path.display().to_string(),
+                            valid: Some(false),
+                            error: Some(e.to_string()),
+                        });
+                    }
+                    Err(_) => {
+                        // Skip invalid skills when not validating
+                    }
+                }
             }
 
             // Recurse into subdirectories if requested
             if recursive {
-                discover_skills_in_dir(&path, recursive, skills)?;
+                discover_skills_in_dir(&path, recursive, validate, skills)?;
             }
         }
     }
@@ -326,6 +391,8 @@ mod tests {
             name: name.to_string(),
             path: path.to_string(),
             description: description.to_string(),
+            valid: None,
+            error: None,
         }
     }
 
@@ -638,7 +705,7 @@ description: {description}
         if let Some(temp) = temp.as_ref() {
             create_skill_dir(temp.path(), "my-skill");
 
-            let skills = discover_skills(temp.path(), false);
+            let skills = discover_skills(temp.path(), false, false);
             assert!(skills.is_ok());
             let skills = skills.ok();
             if let Some(skills) = skills {
@@ -652,7 +719,7 @@ description: {description}
     fn discover_skills_returns_empty_for_empty_directory() {
         let temp = TempDir::new().ok();
         if let Some(temp) = temp.as_ref() {
-            let skills = discover_skills(temp.path(), false);
+            let skills = discover_skills(temp.path(), false, false);
             assert!(skills.is_ok());
             let skills = skills.ok();
             if let Some(skills) = skills {
@@ -670,8 +737,8 @@ description: {description}
             fs::create_dir(&nested).ok();
             create_skill_dir(&nested, "nested-skill");
 
-            let skills_non_recursive = discover_skills(temp.path(), false);
-            let skills_recursive = discover_skills(temp.path(), true);
+            let skills_non_recursive = discover_skills(temp.path(), false, false);
+            let skills_recursive = discover_skills(temp.path(), true, false);
 
             assert!(skills_non_recursive.is_ok());
             assert!(skills_recursive.is_ok());
@@ -694,7 +761,7 @@ description: {description}
             create_skill_dir(temp.path(), "a-skill");
             create_skill_dir(temp.path(), "m-skill");
 
-            let skills = discover_skills(temp.path(), false);
+            let skills = discover_skills(temp.path(), false, false);
             assert!(skills.is_ok());
             let skills = skills.ok();
             if let Some(skills) = skills {
@@ -711,6 +778,7 @@ description: {description}
     fn run_returns_error_for_nonexistent_directory() {
         let result = run(
             Path::new("/nonexistent/path"),
+            false,
             false,
             ListOutputMode::Short,
             OutputMode::Normal,
@@ -730,6 +798,7 @@ description: {description}
         if let Some(temp) = temp.as_ref() {
             let result = run(
                 temp.path(),
+                false,
                 false,
                 ListOutputMode::Short,
                 OutputMode::Quiet,
@@ -753,6 +822,7 @@ description: {description}
             let result = run(
                 temp.path(),
                 false,
+                false,
                 ListOutputMode::Short,
                 OutputMode::Quiet,
                 ColorConfig::default(),
@@ -769,6 +839,7 @@ description: {description}
 
             let result = run(
                 temp.path(),
+                false,
                 false,
                 ListOutputMode::Long,
                 OutputMode::Quiet,
@@ -787,6 +858,7 @@ description: {description}
             let result = run(
                 temp.path(),
                 false,
+                false,
                 ListOutputMode::PathsOnly,
                 OutputMode::Quiet,
                 ColorConfig::default(),
@@ -804,6 +876,7 @@ description: {description}
             let result = run(
                 temp.path(),
                 false,
+                false,
                 ListOutputMode::NamesOnly,
                 OutputMode::Quiet,
                 ColorConfig::default(),
@@ -818,6 +891,8 @@ description: {description}
             name: "test-skill".to_string(),
             description: "A test skill.".to_string(),
             path: "/path/to/skill".to_string(),
+            valid: None,
+            error: None,
         };
         let json = serde_json::to_string(&info).expect("serialize");
         assert!(json.contains("\"name\":\"test-skill\""));

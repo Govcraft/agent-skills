@@ -180,6 +180,7 @@ enum Commands {
     #[command(after_help = r#"Examples:
   agent-skills list ./skills
   agent-skills list --long ./skills
+  agent-skills list --check ./skills
   agent-skills list --paths ./skills | xargs -I{} ls {}
   agent-skills list --names ./skills
   agent-skills ls -r ./
@@ -192,6 +193,10 @@ enum Commands {
         /// Search recursively
         #[arg(short, long)]
         recursive: bool,
+
+        /// Validate each skill and show ✓/✗ status
+        #[arg(short, long)]
+        check: bool,
 
         /// Show full details (path and complete description)
         #[arg(short, long, conflicts_with_all = ["paths", "names"])]
@@ -255,6 +260,7 @@ fn run_command(
         Commands::List {
             directory,
             recursive,
+            check,
             long,
             paths,
             names,
@@ -271,6 +277,7 @@ fn run_command(
             commands::list::run(
                 directory,
                 *recursive,
+                *check,
                 list_mode,
                 output_mode,
                 effective_color,
