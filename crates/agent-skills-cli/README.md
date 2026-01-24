@@ -4,11 +4,31 @@ Command-line tool for validating and working with [Agent Skills](https://agentsk
 
 ## Installation
 
+Install the `agent-skills` binary using any of these methods:
+
+### Shell (macOS/Linux)
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/Govcraft/agent-skills/releases/download/v0.4.2/agent-skills-cli-installer.sh | sh
+```
+
+### PowerShell (Windows)
+
+```powershell
+irm https://github.com/Govcraft/agent-skills/releases/download/v0.4.2/agent-skills-cli-installer.ps1 | iex
+```
+
+### npm
+
+```bash
+npm install -g @govcraft/agent-skills
+```
+
+### Cargo
+
 ```bash
 cargo install agent-skills-cli
 ```
-
-This installs the `agent-skills` binary.
 
 ## Commands
 

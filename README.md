@@ -11,14 +11,21 @@ Agent Skills are a portable format for packaging instructions that AI agents can
 | Crate | Use Case | Install |
 |-------|----------|---------|
 | [`agent-skills`](./crates/agent-skills) | Embed parsing and validation in your Rust application | `cargo add agent-skills` |
-| [`agent-skills-cli`](./crates/agent-skills-cli) | Validate skills from the command line or CI | `cargo install agent-skills-cli` |
+| [`agent-skills-cli`](./crates/agent-skills-cli) | Validate skills from the command line or CI | [Multiple options](#quick-start) |
 
 ## Quick Start
 
-Validate a skill from the command line:
+Install the CLI (no Rust required):
 
 ```bash
-cargo install agent-skills-cli
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/Govcraft/agent-skills/releases/download/v0.4.2/agent-skills-cli-installer.sh | sh
+```
+
+Other installation methods: [npm](https://www.npmjs.com/package/@govcraft/agent-skills), [Cargo](https://crates.io/crates/agent-skills-cli), or [PowerShell](./crates/agent-skills-cli/README.md#powershell-windows).
+
+Validate a skill:
+
+```bash
 agent-skills validate ./my-skill
 ```
 
