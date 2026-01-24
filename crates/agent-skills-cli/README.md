@@ -9,13 +9,13 @@ Install the `agent-skills` binary using any of these methods:
 ### Shell (macOS/Linux)
 
 ```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/Govcraft/agent-skills/releases/download/v0.4.3/agent-skills-cli-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/Govcraft/agent-skills/releases/download/v0.4.4/agent-skills-cli-installer.sh | sh
 ```
 
 ### PowerShell (Windows)
 
 ```powershell
-irm https://github.com/Govcraft/agent-skills/releases/download/v0.4.3/agent-skills-cli-installer.ps1 | iex
+irm https://github.com/Govcraft/agent-skills/releases/download/v0.4.4/agent-skills-cli-installer.ps1 | iex
 ```
 
 ### npm
