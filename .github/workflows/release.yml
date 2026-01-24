@@ -298,17 +298,14 @@ jobs:
           pattern: artifacts-*
           path: npm/
           merge-multiple: true
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
-          node-version: '22'
-      - name: Configure npm for OIDC
-        run: |
-          npm config set registry https://registry.npmjs.org/
-          unset NODE_AUTH_TOKEN
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
       - run: |
           for release in $(echo "$PLAN" | jq --compact-output '.releases[] | select([.artifacts[] | endswith("-npm-package.tar.gz")] | any)'); do
             pkg=$(echo "$release" | jq '.artifacts[] | select(endswith("-npm-package.tar.gz"))' --raw-output)
-            npm publish --provenance --access public "./npm/${pkg}"
+            npm publish --access public "./npm/${pkg}"
           done
 
   announce:
