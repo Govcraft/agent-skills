@@ -115,7 +115,7 @@ fn serialize_properties(
         .map_err(|e| CliError::SerializationError {
             message: e.to_string(),
         }),
-        OutputFormat::Yaml => serde_yaml::to_string(properties)
+        OutputFormat::Yaml => serde_yml::to_string(properties)
             .map(|s| s.trim_end().to_string())
             .map_err(|e| CliError::SerializationError {
                 message: e.to_string(),

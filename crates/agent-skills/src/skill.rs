@@ -186,7 +186,7 @@ struct RawFrontmatter {
 
 /// Parses frontmatter from YAML content.
 fn parse_frontmatter(yaml: &str) -> Result<Frontmatter, ParseError> {
-    let raw: RawFrontmatter = serde_yaml::from_str(yaml).map_err(|e| ParseError::InvalidYaml {
+    let raw: RawFrontmatter = serde_yml::from_str(yaml).map_err(|e| ParseError::InvalidYaml {
         message: e.to_string(),
     })?;
 
