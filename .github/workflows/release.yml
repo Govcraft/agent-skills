@@ -307,6 +307,8 @@ jobs:
             pkg=$(echo "$release" | jq '.artifacts[] | select(endswith("-npm-package.tar.gz"))' --raw-output)
             npm publish --access public "./npm/${pkg}"
           done
+        env:
+          NPM_CONFIG_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   announce:
     needs:
