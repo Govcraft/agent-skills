@@ -45,6 +45,8 @@ agent-skills validate ./my-skill
 
 Accepts a skill directory, a path to `SKILL.md`, or `-` to read paths from stdin.
 
+**Note:** The `name` field in SKILL.md must match the parent directory name. A skill in `./my-skill/SKILL.md` must have `name: my-skill`.
+
 ### list
 
 Discover skills in a directory:
