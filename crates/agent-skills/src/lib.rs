@@ -12,6 +12,7 @@
 //! - Validating skills against the specification
 //! - Loading skills from directories
 //! - Accessing skill metadata, instructions, and referenced files
+//! - **Security verification** via agent-uri identity and PASETO attestation
 //!
 //! # Quick Start
 //!
@@ -78,6 +79,16 @@
 //! - [`AllowedTools`] - Pre-approved tool list (experimental)
 //! - [`SkillDirectory`] - A loaded skill directory with file access
 //!
+//! # Security Module
+//!
+//! The [`security`] module provides cryptographic verification of skills:
+//!
+//! - [`security::SecureSkillRegistry`] - Registry with attestation verification
+//! - [`security::VerifiedSkill`] - Skill with verified identity and capabilities
+//! - [`security::TrustTier`] - Trust levels for capability-based access control
+//!
+//! See the [`security`] module documentation for details.
+//!
 //! # Errors
 //!
 //! - [`ParseError`] - Errors when parsing SKILL.md content
@@ -85,6 +96,7 @@
 //! - [`SkillNameError`] - Invalid skill name
 //! - [`SkillDescriptionError`] - Invalid skill description
 //! - [`CompatibilityError`] - Invalid compatibility string
+//! - [`security::SkillSecurityError`] - Security verification errors
 
 mod allowed_tools;
 mod compatibility;
@@ -94,6 +106,7 @@ mod frontmatter;
 mod loader;
 mod metadata;
 mod name;
+pub mod security;
 mod skill;
 
 // Re-export main types
