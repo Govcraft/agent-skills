@@ -12,7 +12,7 @@ pub enum CompatibilityError {
     Empty,
     /// The compatibility string exceeds the maximum length.
     TooLong {
-        /// The actual length.
+        /// The actual number of Unicode scalar values.
         length: usize,
         /// The maximum allowed length.
         max: usize,
@@ -39,24 +39,25 @@ impl std::error::Error for CompatibilityError {}
 ///
 /// # Constraints
 ///
-/// - Must be 1-500 characters if provided
+/// - Must be 1-500 Unicode scalar values if provided
 ///
 /// # Examples
 ///
 /// ```
 /// use agent_skills::Compatibility;
 ///
-/// let compat = Compatibility::new("Requires git, docker, jq").unwrap();
+/// let compat = Compatibility::new("Requires git, docker, jq")?;
 /// assert_eq!(compat.as_str(), "Requires git, docker, jq");
 ///
 /// // Invalid: empty
 /// assert!(Compatibility::new("").is_err());
+/// # Ok::<(), agent_skills::CompatibilityError>(())
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Compatibility(String);
 
 impl Compatibility {
-    /// Maximum length for a compatibility string.
+    /// Maximum number of Unicode scalar values in a compatibility string.
     pub const MAX_LENGTH: usize = 500;
 
     /// Creates a new compatibility string after validation.
@@ -117,16 +118,17 @@ impl<'de> Deserialize<'de> for Compatibility {
 }
 
 /// Validates a compatibility string.
-const fn validate_compatibility(compat: &str) -> Result<(), CompatibilityError> {
+fn validate_compatibility(compat: &str) -> Result<(), CompatibilityError> {
     // Check empty
     if compat.is_empty() {
         return Err(CompatibilityError::Empty);
     }
 
     // Check length
-    if compat.len() > Compatibility::MAX_LENGTH {
+    let length = compat.chars().count();
+    if length > Compatibility::MAX_LENGTH {
         return Err(CompatibilityError::TooLong {
-            length: compat.len(),
+            length,
             max: Compatibility::MAX_LENGTH,
         });
     }
@@ -135,7 +137,6 @@ const fn validate_compatibility(compat: &str) -> Result<(), CompatibilityError> 
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -171,21 +172,68 @@ mod tests {
     }
 
     #[test]
-    fn display_returns_inner_string() {
-        let compat = Compatibility::new("Designed for Claude Code").unwrap();
+    fn display_returns_inner_string() -> Result<(), CompatibilityError> {
+        let compat = Compatibility::new("Designed for Claude Code")?;
         assert_eq!(format!("{compat}"), "Designed for Claude Code");
+        Ok(())
     }
 
     #[test]
-    fn from_str_works() {
-        let compat: Compatibility = "Requires docker".parse().unwrap();
+    fn from_str_works() -> Result<(), CompatibilityError> {
+        let compat: Compatibility = "Requires docker".parse()?;
         assert_eq!(compat.as_str(), "Requires docker");
+        Ok(())
     }
 
     #[test]
-    fn as_ref_works() {
-        let compat = Compatibility::new("Test").unwrap();
+    fn as_ref_works() -> Result<(), CompatibilityError> {
+        let compat = Compatibility::new("Test")?;
         let s: &str = compat.as_ref();
         assert_eq!(s, "Test");
+        Ok(())
+    }
+    #[test]
+    fn multibyte_text_obeys_character_limit() {
+        for character in ["é", "界", "🦀"] {
+            assert!(Compatibility::new(character.repeat(500)).is_ok());
+            assert_eq!(
+                Compatibility::new(character.repeat(501)),
+                Err(CompatibilityError::TooLong {
+                    length: 501,
+                    max: 500
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn previously_rejected_accented_text_is_accepted() {
+        assert!(Compatibility::new("é".repeat(300)).is_ok());
+    }
+
+    #[test]
+    fn mixed_width_text_obeys_character_limit() {
+        let text = format!("{}é界🦀", "a".repeat(497));
+        assert!(Compatibility::new(&text).is_ok());
+        assert_eq!(
+            Compatibility::new(format!("{text}é")),
+            Err(CompatibilityError::TooLong {
+                length: 501,
+                max: 500
+            })
+        );
+    }
+
+    #[test]
+    fn combining_sequences_count_as_multiple_scalar_values() {
+        let text = "e\u{301}".repeat(250);
+        assert!(Compatibility::new(&text).is_ok());
+        assert_eq!(
+            Compatibility::new(format!("{text}e\u{301}")),
+            Err(CompatibilityError::TooLong {
+                length: 502,
+                max: 500
+            })
+        );
     }
 }
