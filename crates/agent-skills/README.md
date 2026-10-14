@@ -44,6 +44,30 @@ println!("Description: {}", skill.description());
 
 Validation occurs automatically during parsing. Invalid skills return descriptive errors.
 
+### Load with Client Diagnostics
+
+Clients can explicitly accept overlong names and directory-name mismatches:
+
+```rust
+use agent_skills::SkillDirectory;
+
+let loaded = SkillDirectory::load_lenient("./downloaded-skill")?;
+for diagnostic in loaded.diagnostics() {
+    eprintln!("{diagnostic:?}");
+}
+println!("{}: {}", loaded.skill().name(), loaded.skill().description());
+```
+
+This returns `LenientSkillDirectory`, containing a separate `LenientSkill`
+representation and structured `LoadDiagnostic` values. Names are preserved
+exactly without normalization; lengths count Unicode scalar values. Use
+`loaded.path()` to resolve supporting files relative to the skill directory.
+
+Only name length and directory matching become warnings. Missing or blank
+required fields, invalid name syntax, malformed YAML, unknown top-level fields,
+and invalid optional fields still fail. `Skill::parse`, `SkillDirectory::load`,
+and the CLI `validate` command remain strict.
+
 ## Key Types
 
 | Type | Purpose |

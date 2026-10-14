@@ -170,6 +170,15 @@ fn validate_skill_name(name: &str) -> Result<(), SkillNameError> {
         });
     }
 
+    validate_skill_name_syntax(name)
+}
+
+/// Validates name syntax without imposing a length limit.
+pub fn validate_skill_name_syntax(name: &str) -> Result<(), SkillNameError> {
+    if name.is_empty() {
+        return Err(SkillNameError::Empty);
+    }
+
     // Check starts with hyphen
     if name.starts_with('-') {
         return Err(SkillNameError::StartsWithHyphen);
