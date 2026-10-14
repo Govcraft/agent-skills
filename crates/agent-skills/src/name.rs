@@ -66,10 +66,15 @@ impl std::error::Error for SkillNameError {}
 ///
 /// # Constraints
 ///
-/// - Must be 1-64 characters
-/// - May only contain lowercase alphanumeric characters and hyphens (`a-z`, `0-9`, `-`)
+/// - Must be 1-64 Unicode scalar values
+/// - May only contain Unicode alphanumeric characters unchanged by lowercasing,
+///   and ASCII hyphens (`-`)
 /// - Must not start or end with a hyphen
 /// - Must not contain consecutive hyphens (`--`)
+///
+/// Names are preserved exactly, without Unicode normalization. Directory names
+/// must match this exact representation. Uncased letters and Unicode numbers
+/// are accepted; combining marks are not alphanumeric and are rejected.
 ///
 /// # Examples
 ///
@@ -89,7 +94,7 @@ impl std::error::Error for SkillNameError {}
 pub struct SkillName(String);
 
 impl SkillName {
-    /// Maximum length for a skill name.
+    /// Maximum number of Unicode scalar values in a skill name.
     pub const MAX_LENGTH: usize = 64;
 
     /// Creates a new skill name after validation.
@@ -157,9 +162,10 @@ fn validate_skill_name(name: &str) -> Result<(), SkillNameError> {
     }
 
     // Check length
-    if name.len() > SkillName::MAX_LENGTH {
+    let length = name.chars().count();
+    if length > SkillName::MAX_LENGTH {
         return Err(SkillNameError::TooLong {
-            length: name.len(),
+            length,
             max: SkillName::MAX_LENGTH,
         });
     }
@@ -182,7 +188,7 @@ fn validate_skill_name(name: &str) -> Result<(), SkillNameError> {
                 return Err(SkillNameError::ConsecutiveHyphens { position });
             }
             prev_was_hyphen = true;
-        } else if char.is_ascii_lowercase() || char.is_ascii_digit() {
+        } else if char.is_alphanumeric() && char.to_lowercase().eq(std::iter::once(char)) {
             prev_was_hyphen = false;
         } else {
             return Err(SkillNameError::InvalidCharacter { char, position });
@@ -193,15 +199,14 @@ fn validate_skill_name(name: &str) -> Result<(), SkillNameError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
     #[test]
-    fn valid_name_is_accepted() {
-        let name = SkillName::new("pdf-processing");
-        assert!(name.is_ok());
-        assert_eq!(name.unwrap().as_str(), "pdf-processing");
+    fn valid_name_is_accepted() -> Result<(), SkillNameError> {
+        let name = SkillName::new("pdf-processing")?;
+        assert_eq!(name.as_str(), "pdf-processing");
+        Ok(())
     }
 
     #[test]
@@ -311,22 +316,25 @@ mod tests {
     }
 
     #[test]
-    fn display_returns_inner_string() {
-        let name = SkillName::new("my-skill").unwrap();
+    fn display_returns_inner_string() -> Result<(), SkillNameError> {
+        let name = SkillName::new("my-skill")?;
         assert_eq!(format!("{name}"), "my-skill");
+        Ok(())
     }
 
     #[test]
-    fn from_str_works() {
-        let name: SkillName = "my-skill".parse().unwrap();
+    fn from_str_works() -> Result<(), SkillNameError> {
+        let name: SkillName = "my-skill".parse()?;
         assert_eq!(name.as_str(), "my-skill");
+        Ok(())
     }
 
     #[test]
-    fn as_ref_works() {
-        let name = SkillName::new("my-skill").unwrap();
+    fn as_ref_works() -> Result<(), SkillNameError> {
+        let name = SkillName::new("my-skill")?;
         let s: &str = name.as_ref();
         assert_eq!(s, "my-skill");
+        Ok(())
     }
 
     #[test]
@@ -339,5 +347,53 @@ mod tests {
         assert!(msg.contains("'X'"));
         assert!(msg.contains("position 5"));
         assert!(msg.contains("lowercase alphanumeric"));
+    }
+
+    #[test]
+    fn unicode_names_are_preserved() -> Result<(), SkillNameError> {
+        for input in ["café", "技能", "инструмент", "tool-٢", "𐐨"] {
+            assert_eq!(SkillName::new(input)?.as_str(), input);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn unicode_length_counts_scalar_values() {
+        for character in ["é", "技", "𐐨"] {
+            assert!(SkillName::new(character.repeat(64)).is_ok());
+            assert_eq!(
+                SkillName::new(character.repeat(65)),
+                Err(SkillNameError::TooLong {
+                    length: 65,
+                    max: 64
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn unicode_invalid_characters_report_scalar_positions() {
+        for character in ['É', 'ǅ', '𐐀', '＿', '💡', '\u{301}'] {
+            assert_eq!(
+                SkillName::new(format!("é{character}")),
+                Err(SkillNameError::InvalidCharacter {
+                    char: character,
+                    position: 1
+                })
+            );
+        }
+        assert_eq!(
+            SkillName::new("é--技"),
+            Err(SkillNameError::ConsecutiveHyphens { position: 2 })
+        );
+    }
+
+    #[test]
+    fn unicode_names_round_trip_through_serde() -> Result<(), Box<dyn std::error::Error>> {
+        let name = SkillName::new("café-技能")?;
+        let serialized = serde_yml::to_string(&name)?;
+        let deserialized: SkillName = serde_yml::from_str(&serialized)?;
+        assert_eq!(deserialized, name);
+        Ok(())
     }
 }
