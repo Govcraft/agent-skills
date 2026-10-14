@@ -24,7 +24,7 @@
 //! name: my-skill
 //! description: Does something useful.
 //! ---
-//! # Instructions
+//! ## Instructions
 //!
 //! Follow these steps...
 //! "#;
