@@ -40,7 +40,8 @@ println!("Loaded: {}", skill.name());
 
 ## Documentation
 
-- [Agent Skills Specification](https://agentskills.io)
+- [Agent Skills Specification](https://agentskills.io/specification)
+- [Pinned specification and conformance policy](./SPECIFICATION-NOTES.md)
 - [agent-skills API docs](https://docs.rs/agent-skills)
 - [agent-skills-cli on crates.io](https://crates.io/crates/agent-skills-cli)
 

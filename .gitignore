@@ -13,3 +13,8 @@
 # Added by cargo
 
 /target
+
+# Keep the specification baseline and release notes under version control
+!agent-skills-specification.md
+!SPECIFICATION-NOTES.md
+!CHANGELOG.md
