@@ -301,11 +301,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
+      - uses: pnpm/action-setup@v6
+        with:
+          version: '11.28.5'
+          run_install: false
       - run: |
           for release in $(echo "$PLAN" | jq --compact-output '.releases[] | select([.artifacts[] | endswith("-npm-package.tar.gz")] | any)'); do
             pkg=$(echo "$release" | jq '.artifacts[] | select(endswith("-npm-package.tar.gz"))' --raw-output)
-            npm publish --access public "./npm/${pkg}"
+            pnpm publish --access public --no-git-checks "./npm/${pkg}"
           done
 
   announce:
