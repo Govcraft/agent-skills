@@ -168,7 +168,6 @@ impl From<ParseError> for LoadError {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use std::error::Error;
@@ -200,7 +199,7 @@ mod tests {
     #[test]
     fn parse_error_source_returns_inner_error() {
         let inner = SkillNameError::Empty;
-        let err = ParseError::InvalidName(inner.clone());
+        let err = ParseError::InvalidName(inner);
         assert!(err.source().is_some());
     }
 

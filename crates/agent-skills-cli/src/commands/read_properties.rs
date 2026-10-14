@@ -143,12 +143,12 @@ mod tests {
 
     fn minimal_skill_content(name: &str) -> String {
         format!(
-            r#"---
+            r"---
 name: {name}
 description: Test skill.
 ---
 # Instructions
-"#
+"
         )
     }
 

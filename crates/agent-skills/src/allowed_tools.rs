@@ -125,7 +125,6 @@ impl FromIterator<String> for AllowedTools {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -188,14 +187,14 @@ mod tests {
     fn into_iter_works() {
         let tools = AllowedTools::new("Read Write");
         let items: Vec<String> = tools.into_iter().collect();
-        assert_eq!(items.len(), 2);
+        assert_eq!(items, vec!["Read", "Write"]);
     }
 
     #[test]
     fn ref_into_iter_works() {
         let tools = AllowedTools::new("Read Write");
         let items: Vec<_> = (&tools).into_iter().collect();
-        assert_eq!(items.len(), 2);
+        assert_eq!(items, vec!["Read", "Write"]);
     }
 
     #[test]

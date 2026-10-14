@@ -417,12 +417,12 @@ mod tests {
         let skill_dir = dir.join(name);
         fs::create_dir_all(&skill_dir).ok();
         let content = format!(
-            r#"---
+            r"---
 name: {name}
 description: Test skill for {name}.
 ---
 # Instructions
-"#
+"
         );
         fs::write(skill_dir.join("SKILL.md"), content).ok();
     }
@@ -431,12 +431,12 @@ description: Test skill for {name}.
         let skill_dir = dir.join(name);
         fs::create_dir_all(&skill_dir).ok();
         let content = format!(
-            r#"---
+            r"---
 name: {name}
 description: {description}
 ---
 # Instructions
-"#
+"
         );
         fs::write(skill_dir.join("SKILL.md"), content).ok();
     }
@@ -527,8 +527,9 @@ description: {description}
         assert_eq!(lines.len(), 2);
 
         // Both descriptions should start at the same column
-        let desc_start_1 = lines[0].find("Description one").unwrap();
-        let desc_start_2 = lines[1].find("Description two").unwrap();
+        let desc_start_1 = lines[0].find("Description one");
+        let desc_start_2 = lines[1].find("Description two");
+        assert!(desc_start_1.is_some());
         assert_eq!(desc_start_1, desc_start_2);
     }
 
@@ -909,7 +910,7 @@ description: {description}
     }
 
     #[test]
-    fn skill_info_serializes_to_json() {
+    fn skill_info_serializes_to_json() -> Result<(), serde_json::Error> {
         let info = SkillInfo {
             name: "test-skill".to_string(),
             description: "A test skill.".to_string(),
@@ -917,10 +918,11 @@ description: {description}
             valid: None,
             error: None,
         };
-        let json = serde_json::to_string(&info).expect("serialize");
+        let json = serde_json::to_string(&info)?;
         assert!(json.contains("\"name\":\"test-skill\""));
         assert!(json.contains("\"description\":\"A test skill.\""));
         assert!(json.contains("\"path\":\"/path/to/skill\""));
+        Ok(())
     }
 
     #[test]

@@ -152,7 +152,6 @@ impl<'a> IntoIterator for &'a Metadata {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -194,22 +193,19 @@ mod tests {
     #[test]
     fn iter_works() {
         let metadata = Metadata::from_pairs([("a", "1"), ("b", "2")]);
-        let pairs: Vec<_> = metadata.iter().collect();
-        assert_eq!(pairs.len(), 2);
+        assert_eq!(metadata.iter().count(), 2);
     }
 
     #[test]
     fn keys_works() {
         let metadata = Metadata::from_pairs([("a", "1"), ("b", "2")]);
-        let keys: Vec<_> = metadata.keys().collect();
-        assert_eq!(keys.len(), 2);
+        assert_eq!(metadata.keys().count(), 2);
     }
 
     #[test]
     fn values_works() {
         let metadata = Metadata::from_pairs([("a", "1"), ("b", "2")]);
-        let values: Vec<_> = metadata.values().collect();
-        assert_eq!(values.len(), 2);
+        assert_eq!(metadata.values().count(), 2);
     }
 
     #[test]
@@ -230,14 +226,12 @@ mod tests {
     #[test]
     fn into_iter_works() {
         let metadata = Metadata::from_pairs([("a", "1")]);
-        let pairs: Vec<_> = metadata.into_iter().collect();
-        assert_eq!(pairs.len(), 1);
+        assert_eq!(metadata.into_iter().count(), 1);
     }
 
     #[test]
     fn ref_into_iter_works() {
         let metadata = Metadata::from_pairs([("a", "1")]);
-        let pairs: Vec<_> = (&metadata).into_iter().collect();
-        assert_eq!(pairs.len(), 1);
+        assert_eq!((&metadata).into_iter().count(), 1);
     }
 }
