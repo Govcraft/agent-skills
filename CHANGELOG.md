@@ -14,6 +14,7 @@ This release fixes validation of international skill names and multibyte descrip
 - Add opt-in lenient loading with structured diagnostics for overlong names and directory mismatches. Strict types and CLI validation retain their guarantees (#4).
 - Track the specification snapshot and document its source revision and conformance policy (#5).
 - Preserve complete frontmatter values and body text in CRLF files (#6).
+- Avoid UTF-8 truncation panics and align Unicode names in CLI list output (#7).
 - Fix existing lint and documentation-test failures without lint suppressions.
 
 ### Compatibility
