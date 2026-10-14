@@ -5,7 +5,7 @@ use std::path::Path;
 
 use agent_skills::SkillDirectory;
 use serde::Serialize;
-use textwrap::{Options, wrap};
+use textwrap::{Options, core::display_width, wrap};
 
 use crate::color::{self, ColorConfig};
 use crate::error::CliError;
@@ -130,23 +130,25 @@ pub fn run(
 ///
 /// # Arguments
 /// * `description` - The description to truncate
-/// * `max_len` - Maximum length including the "..." suffix
+/// * `max_len` - Maximum Unicode scalar count including the "..." suffix
 ///
 /// # Returns
 /// The truncated description, or the original if already short enough.
 #[must_use]
 fn truncate_description(description: &str, max_len: usize) -> String {
-    if description.len() <= max_len {
+    if description.chars().count() <= max_len {
         return description.to_string();
     }
 
-    // Reserve space for "..."
-    let target_len = max_len.saturating_sub(3);
+    if max_len < 3 {
+        return ".".repeat(max_len);
+    }
 
-    // Find the last space within the target length for word boundary
-    let truncate_at = description[..target_len].rfind(' ').unwrap_or(target_len);
+    // Collect scalar values so the prefix always ends on a UTF-8 boundary.
+    let prefix: String = description.chars().take(max_len - 3).collect();
+    let truncate_at = prefix.rfind(char::is_whitespace).unwrap_or(prefix.len());
 
-    format!("{}...", &description[..truncate_at])
+    format!("{}...", &prefix[..truncate_at])
 }
 
 /// Calculates the maximum name width for alignment.
@@ -160,7 +162,7 @@ fn truncate_description(description: &str, max_len: usize) -> String {
 fn calculate_name_width(skills: &[SkillInfo]) -> usize {
     skills
         .iter()
-        .map(|s| s.name.len())
+        .map(|s| display_width(&s.name))
         .max()
         .unwrap_or(0)
         .min(MAX_NAME_WIDTH)
@@ -198,9 +200,9 @@ fn format_short(skills: &[SkillInfo], color_config: ColorConfig) -> String {
             truncate_description(&skill.description, SHORT_DESCRIPTION_MAX)
         };
 
-        // Calculate padding: name_width - actual name length for alignment
+        // Align using terminal columns rather than UTF-8 bytes.
         // The colored name includes ANSI codes which don't take visual space
-        let padding = name_width.saturating_sub(skill.name.len());
+        let padding = name_width.saturating_sub(display_width(&skill.name));
         let _ = writeln!(
             output,
             "{}{}{}  {}",
@@ -417,12 +419,12 @@ mod tests {
         let skill_dir = dir.join(name);
         fs::create_dir_all(&skill_dir).ok();
         let content = format!(
-            r#"---
+            r"---
 name: {name}
 description: Test skill for {name}.
 ---
 # Instructions
-"#
+"
         );
         fs::write(skill_dir.join("SKILL.md"), content).ok();
     }
@@ -431,12 +433,12 @@ description: Test skill for {name}.
         let skill_dir = dir.join(name);
         fs::create_dir_all(&skill_dir).ok();
         let content = format!(
-            r#"---
+            r"---
 name: {name}
 description: {description}
 ---
 # Instructions
-"#
+"
         );
         fs::write(skill_dir.join("SKILL.md"), content).ok();
     }
@@ -487,6 +489,89 @@ description: {description}
         assert_eq!(truncate_description("", 50), "");
     }
 
+    #[test]
+    fn truncation_handles_multibyte_text_and_exact_limits() {
+        for character in ["é", "界", "🦀"] {
+            assert_eq!(
+                truncate_description(&character.repeat(50), 50),
+                character.repeat(50)
+            );
+            assert_eq!(
+                truncate_description(&character.repeat(60), 50),
+                format!("{}...", character.repeat(47))
+            );
+        }
+    }
+
+    #[test]
+    fn truncation_respects_unicode_word_boundaries() {
+        assert_eq!(
+            truncate_description("café 世界 bonjour", 12),
+            "café 世界..."
+        );
+        assert_eq!(
+            truncate_description("café\u{2003}世界 bonjour", 9),
+            "café..."
+        );
+    }
+
+    #[test]
+    fn truncation_respects_tiny_limits() {
+        for limit in 0..=3 {
+            assert_eq!(truncate_description("é界🦀abcd", limit), ".".repeat(limit));
+        }
+        assert_eq!(truncate_description("é", 1), "é");
+        assert_eq!(truncate_description("", 0), "");
+    }
+
+    #[test]
+    fn format_short_aligns_unicode_names_by_display_width() {
+        let skills = vec![
+            skill_info("café", "", "Description"),
+            skill_info("世界", "", "Description"),
+            skill_info("🦀", "", "Description"),
+            skill_info("e\u{301}", "", "Description"),
+        ];
+        assert_eq!(calculate_name_width(&skills), 4);
+        assert_eq!(
+            format_short(&skills, ColorConfig::new(false)),
+            "café  Description\n世界  Description\n🦀    Description\ne\u{301}     Description\n"
+        );
+    }
+
+    #[test]
+    fn format_short_truncates_multibyte_validation_errors() {
+        let mut skill = skill_info("broken", "", "");
+        skill.valid = Some(false);
+        skill.error = Some("é".repeat(60));
+        let output = format_short(&[skill], ColorConfig::new(false));
+        assert!(output.ends_with(&format!("{}...\n", "é".repeat(47))));
+    }
+
+    #[test]
+    fn discovered_unicode_descriptions_format_without_panicking() -> Result<(), CliError> {
+        let temp = TempDir::new().map_err(CliError::from)?;
+        for (name, character) in [("accent", "é"), ("cjk", "界"), ("emoji", "🦀")] {
+            let dir = temp.path().join(name);
+            fs::create_dir(&dir).map_err(CliError::from)?;
+            fs::write(
+                dir.join("SKILL.md"),
+                format!(
+                    "---\nname: {name}\ndescription: {}\n---\nInstructions",
+                    character.repeat(60)
+                ),
+            )
+            .map_err(CliError::from)?;
+        }
+        let skills = discover_skills(temp.path(), false, false)?;
+        assert_eq!(skills.len(), 3);
+        let output = format_short(&skills, ColorConfig::new(false));
+        for character in ["é", "界", "🦀"] {
+            assert!(output.contains(&format!("{}...", character.repeat(47))));
+        }
+        Ok(())
+    }
+
     // Width calculation tests
     #[test]
     fn calculate_name_width_returns_zero_for_empty() {
@@ -527,8 +612,9 @@ description: {description}
         assert_eq!(lines.len(), 2);
 
         // Both descriptions should start at the same column
-        let desc_start_1 = lines[0].find("Description one").unwrap();
-        let desc_start_2 = lines[1].find("Description two").unwrap();
+        let desc_start_1 = lines[0].find("Description one");
+        let desc_start_2 = lines[1].find("Description two");
+        assert!(desc_start_1.is_some());
         assert_eq!(desc_start_1, desc_start_2);
     }
 
@@ -909,7 +995,7 @@ description: {description}
     }
 
     #[test]
-    fn skill_info_serializes_to_json() {
+    fn skill_info_serializes_to_json() -> Result<(), serde_json::Error> {
         let info = SkillInfo {
             name: "test-skill".to_string(),
             description: "A test skill.".to_string(),
@@ -917,10 +1003,11 @@ description: {description}
             valid: None,
             error: None,
         };
-        let json = serde_json::to_string(&info).expect("serialize");
+        let json = serde_json::to_string(&info)?;
         assert!(json.contains("\"name\":\"test-skill\""));
         assert!(json.contains("\"description\":\"A test skill.\""));
         assert!(json.contains("\"path\":\"/path/to/skill\""));
+        Ok(())
     }
 
     #[test]

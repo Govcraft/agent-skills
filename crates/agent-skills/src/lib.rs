@@ -24,7 +24,7 @@
 //! name: my-skill
 //! description: Does something useful.
 //! ---
-//! # Instructions
+//! ## Instructions
 //!
 //! Follow these steps...
 //! "#;
@@ -91,6 +91,7 @@ mod compatibility;
 mod description;
 mod error;
 mod frontmatter;
+mod lenient;
 mod loader;
 mod metadata;
 mod name;
@@ -102,6 +103,7 @@ pub use compatibility::{Compatibility, CompatibilityError};
 pub use description::{SkillDescription, SkillDescriptionError};
 pub use error::{LoadError, ParseError};
 pub use frontmatter::{Frontmatter, FrontmatterBuilder};
+pub use lenient::{LenientSkill, LenientSkillDirectory, LoadDiagnostic};
 pub use loader::SkillDirectory;
 pub use metadata::Metadata;
 pub use name::{SkillName, SkillNameError};

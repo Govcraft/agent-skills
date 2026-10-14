@@ -14,18 +14,21 @@ use crate::skill::Skill;
 /// # Examples
 ///
 /// ```no_run
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// use agent_skills::SkillDirectory;
 /// use std::path::Path;
 ///
-/// let dir = SkillDirectory::load(Path::new("./my-skill")).unwrap();
+/// let dir = SkillDirectory::load(Path::new("./my-skill"))?;
 /// println!("Loaded skill: {}", dir.skill().name());
 ///
 /// // Check for optional directories
 /// if dir.has_scripts() {
-///     for script in dir.scripts().unwrap() {
+///     for script in dir.scripts()? {
 ///         println!("Found script: {}", script.display());
 ///     }
 /// }
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone)]
 pub struct SkillDirectory {
@@ -51,36 +54,18 @@ impl SkillDirectory {
     /// # Examples
     ///
     /// ```no_run
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// use agent_skills::SkillDirectory;
     /// use std::path::Path;
     ///
-    /// let dir = SkillDirectory::load(Path::new("./my-skill")).unwrap();
+    /// let dir = SkillDirectory::load(Path::new("./my-skill"))?;
     /// assert_eq!(dir.skill().name().as_str(), "my-skill");
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn load(path: impl AsRef<Path>) -> Result<Self, LoadError> {
         let path = path.as_ref();
-        let path_str = path.display().to_string();
-
-        // Check directory exists
-        if !path.exists() {
-            return Err(LoadError::DirectoryNotFound { path: path_str });
-        }
-
-        if !path.is_dir() {
-            return Err(LoadError::DirectoryNotFound { path: path_str });
-        }
-
-        // Read SKILL.md
-        let skill_file = path.join("SKILL.md");
-        if !skill_file.exists() {
-            return Err(LoadError::SkillFileNotFound { path: path_str });
-        }
-
-        let content = fs::read_to_string(&skill_file).map_err(|e| LoadError::IoError {
-            path: skill_file.display().to_string(),
-            kind: e.kind(),
-            message: e.to_string(),
-        })?;
+        let content = read_skill_content(path)?;
 
         // Parse skill
         let skill = Skill::parse(&content)?;
@@ -102,6 +87,19 @@ impl SkillDirectory {
             path: path.to_path_buf(),
             skill,
         })
+    }
+
+    /// Loads a skill with warnings for name length and directory mismatches.
+    ///
+    /// All other validation remains strict. The returned representation does not
+    /// weaken the invariants of [`Skill`] or [`crate::SkillName`].
+    ///
+    /// # Errors
+    ///
+    /// Returns `LoadError` for filesystem errors, malformed YAML, unknown fields,
+    /// invalid required fields, invalid name syntax, or invalid optional fields.
+    pub fn load_lenient(path: impl AsRef<Path>) -> Result<crate::LenientSkillDirectory, LoadError> {
+        crate::LenientSkillDirectory::load(path)
     }
 
     /// Returns the directory path.
@@ -179,11 +177,14 @@ impl SkillDirectory {
     /// # Examples
     ///
     /// ```no_run
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// use agent_skills::SkillDirectory;
     /// use std::path::Path;
     ///
-    /// let dir = SkillDirectory::load(Path::new("./my-skill")).unwrap();
-    /// let content = dir.read_reference("REFERENCE.md").unwrap();
+    /// let dir = SkillDirectory::load(Path::new("./my-skill"))?;
+    /// let content = dir.read_reference("REFERENCE.md")?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn read_reference(&self, name: &str) -> Result<String, LoadError> {
         let file_path = self.path.join("references").join(name);
@@ -215,11 +216,14 @@ impl SkillDirectory {
     /// # Examples
     ///
     /// ```no_run
+    /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// use agent_skills::SkillDirectory;
     /// use std::path::Path;
     ///
-    /// let dir = SkillDirectory::load(Path::new("./my-skill")).unwrap();
-    /// let bytes = dir.read_asset("template.txt").unwrap();
+    /// let dir = SkillDirectory::load(Path::new("./my-skill"))?;
+    /// let bytes = dir.read_asset("template.txt")?;
+    /// # Ok(())
+    /// # }
     /// ```
     pub fn read_asset(&self, name: &str) -> Result<Vec<u8>, LoadError> {
         let file_path = self.path.join("assets").join(name);
@@ -236,6 +240,34 @@ impl SkillDirectory {
         let file_path = self.path.join("assets").join(name);
         read_file_as_string(&file_path)
     }
+}
+
+/// Reads the SKILL.md content after validating the directory.
+pub fn read_skill_content(path: &Path) -> Result<String, LoadError> {
+    let path_str = path.display().to_string();
+
+    // Check directory exists
+    if !path.exists() {
+        return Err(LoadError::DirectoryNotFound { path: path_str });
+    }
+
+    if !path.is_dir() {
+        return Err(LoadError::DirectoryNotFound { path: path_str });
+    }
+
+    // Read SKILL.md
+    let skill_file = path.join("SKILL.md");
+    if !skill_file.exists() {
+        return Err(LoadError::SkillFileNotFound { path: path_str });
+    }
+
+    let content = fs::read_to_string(&skill_file).map_err(|e| LoadError::IoError {
+        path: skill_file.display().to_string(),
+        kind: e.kind(),
+        message: e.to_string(),
+    })?;
+
+    Ok(content)
 }
 
 /// Lists files in a subdirectory of a skill directory.
@@ -301,38 +333,38 @@ fn read_file_as_bytes(path: &Path) -> Result<Vec<u8>, LoadError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn create_skill_dir(temp: &TempDir, name: &str, content: &str) -> PathBuf {
+    fn create_skill_dir(temp: &TempDir, name: &str, content: &str) -> std::io::Result<PathBuf> {
         let skill_dir = temp.path().join(name);
-        fs::create_dir(&skill_dir).unwrap();
-        fs::write(skill_dir.join("SKILL.md"), content).unwrap();
-        skill_dir
+        fs::create_dir(&skill_dir)?;
+        fs::write(skill_dir.join("SKILL.md"), content)?;
+        Ok(skill_dir)
     }
 
     fn minimal_skill_content(name: &str) -> String {
         format!(
-            r#"---
+            r"---
 name: {name}
 description: Test skill.
 ---
 # Instructions
-"#
+"
         )
     }
 
     #[test]
-    fn loads_valid_skill_directory() {
-        let temp = TempDir::new().unwrap();
-        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"));
+    fn loads_valid_skill_directory() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = TempDir::new()?;
+        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"))?;
 
         let result = SkillDirectory::load(&skill_dir);
-        assert!(result.is_ok(), "Expected Ok, got: {:?}", result);
-        let dir = result.unwrap();
+        assert!(result.is_ok(), "Expected Ok, got: {result:?}");
+        let dir = result?;
         assert_eq!(dir.skill().name().as_str(), "my-skill");
+        Ok(())
     }
 
     #[test]
@@ -342,19 +374,20 @@ description: Test skill.
     }
 
     #[test]
-    fn rejects_missing_skill_file() {
-        let temp = TempDir::new().unwrap();
+    fn rejects_missing_skill_file() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = TempDir::new()?;
         let skill_dir = temp.path().join("empty-skill");
-        fs::create_dir(&skill_dir).unwrap();
+        fs::create_dir(&skill_dir)?;
 
         let result = SkillDirectory::load(&skill_dir);
         assert!(matches!(result, Err(LoadError::SkillFileNotFound { .. })));
+        Ok(())
     }
 
     #[test]
-    fn detects_name_mismatch() {
-        let temp = TempDir::new().unwrap();
-        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("other-name"));
+    fn detects_name_mismatch() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = TempDir::new()?;
+        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("other-name"))?;
 
         let result = SkillDirectory::load(&skill_dir);
         assert!(matches!(
@@ -364,145 +397,158 @@ description: Test skill.
                 skill_name,
             }) if directory_name == "my-skill" && skill_name == "other-name"
         ));
+        Ok(())
     }
 
     #[test]
-    fn has_scripts_returns_false_without_scripts_dir() {
-        let temp = TempDir::new().unwrap();
-        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"));
+    fn has_scripts_returns_false_without_scripts_dir() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = TempDir::new()?;
+        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"))?;
 
-        let dir = SkillDirectory::load(&skill_dir).unwrap();
+        let dir = SkillDirectory::load(&skill_dir)?;
         assert!(!dir.has_scripts());
+        Ok(())
     }
 
     #[test]
-    fn has_scripts_returns_true_with_scripts_dir() {
-        let temp = TempDir::new().unwrap();
-        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"));
-        fs::create_dir(skill_dir.join("scripts")).unwrap();
+    fn has_scripts_returns_true_with_scripts_dir() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = TempDir::new()?;
+        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"))?;
+        fs::create_dir(skill_dir.join("scripts"))?;
 
-        let dir = SkillDirectory::load(&skill_dir).unwrap();
+        let dir = SkillDirectory::load(&skill_dir)?;
         assert!(dir.has_scripts());
+        Ok(())
     }
 
     #[test]
-    fn lists_scripts() {
-        let temp = TempDir::new().unwrap();
-        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"));
+    fn lists_scripts() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = TempDir::new()?;
+        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"))?;
         let scripts_dir = skill_dir.join("scripts");
-        fs::create_dir(&scripts_dir).unwrap();
-        fs::write(scripts_dir.join("run.sh"), "#!/bin/bash").unwrap();
-        fs::write(scripts_dir.join("build.py"), "# Python").unwrap();
+        fs::create_dir(&scripts_dir)?;
+        fs::write(scripts_dir.join("run.sh"), "#!/bin/bash")?;
+        fs::write(scripts_dir.join("build.py"), "# Python")?;
 
-        let dir = SkillDirectory::load(&skill_dir).unwrap();
-        let scripts = dir.scripts().unwrap();
+        let dir = SkillDirectory::load(&skill_dir)?;
+        let scripts = dir.scripts()?;
         assert_eq!(scripts.len(), 2);
+        Ok(())
     }
 
     #[test]
-    fn scripts_returns_empty_without_scripts_dir() {
-        let temp = TempDir::new().unwrap();
-        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"));
+    fn scripts_returns_empty_without_scripts_dir() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = TempDir::new()?;
+        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"))?;
 
-        let dir = SkillDirectory::load(&skill_dir).unwrap();
-        let scripts = dir.scripts().unwrap();
+        let dir = SkillDirectory::load(&skill_dir)?;
+        let scripts = dir.scripts()?;
         assert!(scripts.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn has_references_works() {
-        let temp = TempDir::new().unwrap();
-        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"));
+    fn has_references_works() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = TempDir::new()?;
+        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"))?;
 
-        let dir = SkillDirectory::load(&skill_dir).unwrap();
+        let dir = SkillDirectory::load(&skill_dir)?;
         assert!(!dir.has_references());
 
-        fs::create_dir(skill_dir.join("references")).unwrap();
-        let dir = SkillDirectory::load(&skill_dir).unwrap();
+        fs::create_dir(skill_dir.join("references"))?;
+        let dir = SkillDirectory::load(&skill_dir)?;
         assert!(dir.has_references());
+        Ok(())
     }
 
     #[test]
-    fn has_assets_works() {
-        let temp = TempDir::new().unwrap();
-        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"));
+    fn has_assets_works() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = TempDir::new()?;
+        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"))?;
 
-        let dir = SkillDirectory::load(&skill_dir).unwrap();
+        let dir = SkillDirectory::load(&skill_dir)?;
         assert!(!dir.has_assets());
 
-        fs::create_dir(skill_dir.join("assets")).unwrap();
-        let dir = SkillDirectory::load(&skill_dir).unwrap();
+        fs::create_dir(skill_dir.join("assets"))?;
+        let dir = SkillDirectory::load(&skill_dir)?;
         assert!(dir.has_assets());
+        Ok(())
     }
 
     #[test]
-    fn reads_reference_file() {
-        let temp = TempDir::new().unwrap();
-        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"));
+    fn reads_reference_file() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = TempDir::new()?;
+        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"))?;
         let refs_dir = skill_dir.join("references");
-        fs::create_dir(&refs_dir).unwrap();
-        fs::write(refs_dir.join("REFERENCE.md"), "# Reference\n\nContent").unwrap();
+        fs::create_dir(&refs_dir)?;
+        fs::write(refs_dir.join("REFERENCE.md"), "# Reference\n\nContent")?;
 
-        let dir = SkillDirectory::load(&skill_dir).unwrap();
-        let content = dir.read_reference("REFERENCE.md").unwrap();
+        let dir = SkillDirectory::load(&skill_dir)?;
+        let content = dir.read_reference("REFERENCE.md")?;
         assert!(content.contains("# Reference"));
+        Ok(())
     }
 
     #[test]
-    fn read_reference_returns_error_for_missing_file() {
-        let temp = TempDir::new().unwrap();
-        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"));
+    fn read_reference_returns_error_for_missing_file() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = TempDir::new()?;
+        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"))?;
 
-        let dir = SkillDirectory::load(&skill_dir).unwrap();
+        let dir = SkillDirectory::load(&skill_dir)?;
         let result = dir.read_reference("nonexistent.md");
         assert!(matches!(result, Err(LoadError::FileNotFound { .. })));
+        Ok(())
     }
 
     #[test]
-    fn reads_asset_as_bytes() {
-        let temp = TempDir::new().unwrap();
-        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"));
+    fn reads_asset_as_bytes() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = TempDir::new()?;
+        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"))?;
         let assets_dir = skill_dir.join("assets");
-        fs::create_dir(&assets_dir).unwrap();
-        fs::write(assets_dir.join("data.bin"), [0x00, 0x01, 0x02]).unwrap();
+        fs::create_dir(&assets_dir)?;
+        fs::write(assets_dir.join("data.bin"), [0x00, 0x01, 0x02])?;
 
-        let dir = SkillDirectory::load(&skill_dir).unwrap();
-        let bytes = dir.read_asset("data.bin").unwrap();
+        let dir = SkillDirectory::load(&skill_dir)?;
+        let bytes = dir.read_asset("data.bin")?;
         assert_eq!(bytes, vec![0x00, 0x01, 0x02]);
+        Ok(())
     }
 
     #[test]
-    fn reads_asset_as_string() {
-        let temp = TempDir::new().unwrap();
-        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"));
+    fn reads_asset_as_string() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = TempDir::new()?;
+        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"))?;
         let assets_dir = skill_dir.join("assets");
-        fs::create_dir(&assets_dir).unwrap();
-        fs::write(assets_dir.join("template.txt"), "Hello, World!").unwrap();
+        fs::create_dir(&assets_dir)?;
+        fs::write(assets_dir.join("template.txt"), "Hello, World!")?;
 
-        let dir = SkillDirectory::load(&skill_dir).unwrap();
-        let content = dir.read_asset_string("template.txt").unwrap();
+        let dir = SkillDirectory::load(&skill_dir)?;
+        let content = dir.read_asset_string("template.txt")?;
         assert_eq!(content, "Hello, World!");
+        Ok(())
     }
 
     #[test]
-    fn reads_script_file() {
-        let temp = TempDir::new().unwrap();
-        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"));
+    fn reads_script_file() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = TempDir::new()?;
+        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"))?;
         let scripts_dir = skill_dir.join("scripts");
-        fs::create_dir(&scripts_dir).unwrap();
-        fs::write(scripts_dir.join("run.sh"), "#!/bin/bash\necho hello").unwrap();
+        fs::create_dir(&scripts_dir)?;
+        fs::write(scripts_dir.join("run.sh"), "#!/bin/bash\necho hello")?;
 
-        let dir = SkillDirectory::load(&skill_dir).unwrap();
-        let content = dir.read_script("run.sh").unwrap();
+        let dir = SkillDirectory::load(&skill_dir)?;
+        let content = dir.read_script("run.sh")?;
         assert!(content.contains("#!/bin/bash"));
+        Ok(())
     }
 
     #[test]
-    fn path_returns_directory_path() {
-        let temp = TempDir::new().unwrap();
-        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"));
+    fn path_returns_directory_path() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = TempDir::new()?;
+        let skill_dir = create_skill_dir(&temp, "my-skill", &minimal_skill_content("my-skill"))?;
 
-        let dir = SkillDirectory::load(&skill_dir).unwrap();
+        let dir = SkillDirectory::load(&skill_dir)?;
         assert_eq!(dir.path(), skill_dir);
+        Ok(())
     }
 }

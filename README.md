@@ -18,7 +18,7 @@ Agent Skills are a portable format for packaging instructions that AI agents can
 Install the CLI (no Rust required):
 
 ```bash
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/Govcraft/agent-skills/releases/download/v0.4.4/agent-skills-cli-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/Govcraft/agent-skills/releases/download/v0.5.0/agent-skills-cli-installer.sh | sh
 ```
 
 Other installation methods: [npm](https://www.npmjs.com/package/@govcraft/agent-skills), [Cargo](https://crates.io/crates/agent-skills-cli), or [PowerShell](./crates/agent-skills-cli/README.md#powershell-windows).
@@ -40,7 +40,8 @@ println!("Loaded: {}", skill.name());
 
 ## Documentation
 
-- [Agent Skills Specification](https://agentskills.io)
+- [Agent Skills Specification](https://agentskills.io/specification)
+- [Pinned specification and conformance policy](./SPECIFICATION-NOTES.md)
 - [agent-skills API docs](https://docs.rs/agent-skills)
 - [agent-skills-cli on crates.io](https://crates.io/crates/agent-skills-cli)
 

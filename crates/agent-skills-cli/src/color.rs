@@ -75,9 +75,7 @@ impl ColorConfig {
     #[must_use]
     pub fn detect(no_color_flag: bool) -> Self {
         let no_color_env = std::env::var("NO_COLOR").is_ok();
-        let term_dumb = std::env::var("TERM")
-            .map(|t| t == "dumb")
-            .unwrap_or(false);
+        let term_dumb = std::env::var("TERM").is_ok_and(|t| t == "dumb");
         let enabled =
             !no_color_flag && !no_color_env && !term_dumb && std::io::stdout().is_terminal();
         Self::new(enabled)

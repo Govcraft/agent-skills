@@ -362,7 +362,7 @@ mod tests {
     }
 
     #[test]
-    fn cli_error_to_json_is_valid_json() {
+    fn cli_error_to_json_is_valid_json() -> Result<(), serde_json::Error> {
         let err = CliError::PathNotFound {
             path: PathBuf::from("/test"),
         };
@@ -370,7 +370,8 @@ mod tests {
         assert!(json.contains("PATH_NOT_FOUND"));
         assert!(json.contains("error"));
         // Verify it parses
-        let _: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        let _: serde_json::Value = serde_json::from_str(&json)?;
+        Ok(())
     }
 
     #[test]
@@ -393,14 +394,15 @@ mod tests {
     }
 
     #[test]
-    fn error_code_serializes_screaming_snake_case() {
-        let json = serde_json::to_string(&ErrorCode::PathNotFound).expect("serialize");
+    fn error_code_serializes_screaming_snake_case() -> Result<(), serde_json::Error> {
+        let json = serde_json::to_string(&ErrorCode::PathNotFound)?;
         assert_eq!(json, "\"PATH_NOT_FOUND\"");
 
-        let json = serde_json::to_string(&ErrorCode::LoadError).expect("serialize");
+        let json = serde_json::to_string(&ErrorCode::LoadError)?;
         assert_eq!(json, "\"LOAD_ERROR\"");
 
-        let json = serde_json::to_string(&ErrorCode::NoPathsProvided).expect("serialize");
+        let json = serde_json::to_string(&ErrorCode::NoPathsProvided)?;
         assert_eq!(json, "\"NO_PATHS_PROVIDED\"");
+        Ok(())
     }
 }

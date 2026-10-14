@@ -12,7 +12,7 @@ pub enum SkillDescriptionError {
     Empty,
     /// The description exceeds the maximum length.
     TooLong {
-        /// The actual length of the description.
+        /// The actual number of Unicode scalar values in the description.
         length: usize,
         /// The maximum allowed length.
         max: usize,
@@ -39,7 +39,7 @@ impl std::error::Error for SkillDescriptionError {}
 ///
 /// # Constraints
 ///
-/// - Must be 1-1024 characters
+/// - Must be 1-1024 Unicode scalar values
 /// - Must not be empty or whitespace-only
 ///
 /// # Examples
@@ -47,7 +47,7 @@ impl std::error::Error for SkillDescriptionError {}
 /// ```
 /// use agent_skills::SkillDescription;
 ///
-/// let desc = SkillDescription::new("Extracts text from PDF files.").unwrap();
+/// let desc = SkillDescription::new("Extracts text from PDF files.")?;
 /// assert!(!desc.as_str().is_empty());
 ///
 /// // Invalid: empty
@@ -55,12 +55,13 @@ impl std::error::Error for SkillDescriptionError {}
 ///
 /// // Invalid: whitespace only
 /// assert!(SkillDescription::new("   ").is_err());
+/// # Ok::<(), agent_skills::SkillDescriptionError>(())
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SkillDescription(String);
 
 impl SkillDescription {
-    /// Maximum length for a skill description.
+    /// Maximum number of Unicode scalar values in a skill description.
     pub const MAX_LENGTH: usize = 1024;
 
     /// Creates a new skill description after validation.
@@ -128,9 +129,10 @@ fn validate_skill_description(description: &str) -> Result<(), SkillDescriptionE
     }
 
     // Check length
-    if description.len() > SkillDescription::MAX_LENGTH {
+    let length = description.chars().count();
+    if length > SkillDescription::MAX_LENGTH {
         return Err(SkillDescriptionError::TooLong {
-            length: description.len(),
+            length,
             max: SkillDescription::MAX_LENGTH,
         });
     }
@@ -139,7 +141,6 @@ fn validate_skill_description(description: &str) -> Result<(), SkillDescriptionE
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
@@ -188,22 +189,25 @@ mod tests {
     }
 
     #[test]
-    fn display_returns_inner_string() {
-        let desc = SkillDescription::new("My description").unwrap();
+    fn display_returns_inner_string() -> Result<(), SkillDescriptionError> {
+        let desc = SkillDescription::new("My description")?;
         assert_eq!(format!("{desc}"), "My description");
+        Ok(())
     }
 
     #[test]
-    fn from_str_works() {
-        let desc: SkillDescription = "My description".parse().unwrap();
+    fn from_str_works() -> Result<(), SkillDescriptionError> {
+        let desc: SkillDescription = "My description".parse()?;
         assert_eq!(desc.as_str(), "My description");
+        Ok(())
     }
 
     #[test]
-    fn as_ref_works() {
-        let desc = SkillDescription::new("My description").unwrap();
+    fn as_ref_works() -> Result<(), SkillDescriptionError> {
+        let desc = SkillDescription::new("My description")?;
         let s: &str = desc.as_ref();
         assert_eq!(s, "My description");
+        Ok(())
     }
 
     #[test]
@@ -215,5 +219,49 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("2000"));
         assert!(msg.contains("1024"));
+    }
+    #[test]
+    fn multibyte_text_obeys_character_limit() {
+        for character in ["é", "界", "🦀"] {
+            assert!(SkillDescription::new(character.repeat(1024)).is_ok());
+            assert_eq!(
+                SkillDescription::new(character.repeat(1025)),
+                Err(SkillDescriptionError::TooLong {
+                    length: 1025,
+                    max: 1024
+                })
+            );
+        }
+    }
+
+    #[test]
+    fn previously_rejected_accented_text_is_accepted() {
+        assert!(SkillDescription::new("é".repeat(600)).is_ok());
+    }
+
+    #[test]
+    fn mixed_width_text_obeys_character_limit() {
+        let text = format!("{}é界🦀", "a".repeat(1021));
+        assert!(SkillDescription::new(&text).is_ok());
+        assert_eq!(
+            SkillDescription::new(format!("{text}é")),
+            Err(SkillDescriptionError::TooLong {
+                length: 1025,
+                max: 1024
+            })
+        );
+    }
+
+    #[test]
+    fn combining_sequences_count_as_multiple_scalar_values() {
+        let text = "e\u{301}".repeat(512);
+        assert!(SkillDescription::new(&text).is_ok());
+        assert_eq!(
+            SkillDescription::new(format!("{text}e\u{301}")),
+            Err(SkillDescriptionError::TooLong {
+                length: 1026,
+                max: 1024
+            })
+        );
     }
 }

@@ -23,14 +23,14 @@ use crate::name::SkillName;
 /// use agent_skills::Skill;
 ///
 /// // Parse from SKILL.md content
-/// let content = r#"---
+/// let content = r"---
 /// name: my-skill
 /// description: Does something useful.
 /// ---
-/// # Instructions
+/// ## Instructions
 ///
 /// Follow these steps...
-/// "#;
+/// ";
 ///
 /// let skill = Skill::parse(content).unwrap();
 /// assert_eq!(skill.name().as_str(), "my-skill");
@@ -76,20 +76,21 @@ impl Skill {
     /// - The content doesn't start with `---`
     /// - The YAML frontmatter is invalid
     /// - Required fields are missing or invalid
+    /// - Unknown top-level frontmatter fields are present
     ///
     /// # Examples
     ///
     /// ```
     /// use agent_skills::Skill;
     ///
-    /// let content = r#"---
+    /// let content = r"---
     /// name: my-skill
     /// description: Does something useful.
     /// ---
-    /// # Instructions
+    /// ## Instructions
     ///
     /// Follow these steps...
-    /// "#;
+    /// ";
     ///
     /// let skill = Skill::parse(content).unwrap();
     /// assert_eq!(skill.name().as_str(), "my-skill");
@@ -135,7 +136,7 @@ impl Skill {
 }
 
 /// Splits SKILL.md content into frontmatter YAML and body.
-fn split_frontmatter_and_body(content: &str) -> Result<(&str, &str), ParseError> {
+pub fn split_frontmatter_and_body(content: &str) -> Result<(&str, &str), ParseError> {
     // Content must start with ---
     let content = content.trim_start();
     if !content.starts_with("---") {
@@ -162,33 +163,38 @@ fn split_frontmatter_and_body(content: &str) -> Result<(&str, &str), ParseError>
 /// Finds the position of the closing `---` delimiter.
 fn find_closing_delimiter(content: &str) -> Option<usize> {
     let mut pos = 0;
-    for line in content.lines() {
-        if line == "---" {
+    for line in content.split_inclusive('\n') {
+        if line.trim_end_matches(['\r', '\n']) == "---" {
             return Some(pos);
         }
-        // +1 for the newline (this is approximate but works for finding start)
-        pos += line.len() + 1;
+        // Preserve the actual newline width when calculating byte offsets.
+        pos += line.len();
     }
     None
 }
 
 /// Internal struct for YAML deserialization.
 #[derive(Deserialize)]
-#[serde(rename_all = "kebab-case")]
-struct RawFrontmatter {
-    name: Option<String>,
-    description: Option<String>,
-    license: Option<String>,
-    compatibility: Option<String>,
-    metadata: Option<HashMap<String, String>>,
-    allowed_tools: Option<String>,
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
+pub struct RawFrontmatter {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub license: Option<String>,
+    pub compatibility: Option<String>,
+    pub metadata: Option<HashMap<String, String>>,
+    pub allowed_tools: Option<String>,
+}
+
+/// Deserializes known frontmatter fields without validating domain values.
+pub fn parse_raw_frontmatter(yaml: &str) -> Result<RawFrontmatter, ParseError> {
+    serde_yml::from_str(yaml).map_err(|error| ParseError::InvalidYaml {
+        message: error.to_string(),
+    })
 }
 
 /// Parses frontmatter from YAML content.
 fn parse_frontmatter(yaml: &str) -> Result<Frontmatter, ParseError> {
-    let raw: RawFrontmatter = serde_yml::from_str(yaml).map_err(|e| ParseError::InvalidYaml {
-        message: e.to_string(),
-    })?;
+    let raw = parse_raw_frontmatter(yaml)?;
 
     // Validate required fields
     let name_str = raw.name.ok_or(ParseError::MissingField { field: "name" })?;
@@ -232,30 +238,85 @@ fn parse_frontmatter(yaml: &str) -> Result<Frontmatter, ParseError> {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
 
     #[test]
-    fn parses_minimal_skill() {
-        let content = r#"---
+    fn parses_crlf_frontmatter_without_truncating_fields_or_body() -> Result<(), ParseError> {
+        let content = "---\r\nname: test-skill\r\ndescription: Test.\r\nlicense: MIT\r\ncompatibility: Requires git\r\nmetadata:\r\n  author: example\r\nallowed-tools: Read Write\r\n---\r\n# Instructions\r\nKeep this body.\r\n";
+        let skill = Skill::parse(content)?;
+        assert_eq!(skill.frontmatter().license(), Some("MIT"));
+        assert_eq!(
+            skill
+                .frontmatter()
+                .compatibility()
+                .map(Compatibility::as_str),
+            Some("Requires git")
+        );
+        assert_eq!(
+            skill
+                .frontmatter()
+                .metadata()
+                .and_then(|metadata| metadata.get("author")),
+            Some("example")
+        );
+        assert_eq!(
+            skill.frontmatter().allowed_tools().map(ToString::to_string),
+            Some("Read Write".to_string())
+        );
+        assert_eq!(skill.body(), "# Instructions\r\nKeep this body.\r\n");
+        Ok(())
+    }
+
+    #[test]
+    fn rejects_unknown_frontmatter_fields_with_actionable_errors() {
+        for unknown in ["invented-field", "descripton", "allowed_tools"] {
+            let content =
+                format!("---\nname: test-skill\ndescription: Test.\n{unknown}: value\n---\n");
+            let result = Skill::parse(&content);
+            assert!(matches!(result, Err(ParseError::InvalidYaml { message })
+                if message.contains(unknown) && message.contains("expected") && message.contains("description")));
+        }
+    }
+
+    #[test]
+    fn preserves_arbitrary_metadata_keys() -> Result<(), ParseError> {
+        let skill = Skill::parse(
+            "---\nname: test-skill\ndescription: Test.\nmetadata:\n  invented-field: value\n  vendor.example/key: custom\n---\n",
+        )?;
+        let metadata = skill.frontmatter().metadata();
+        assert_eq!(
+            metadata.and_then(|value| value.get("invented-field")),
+            Some("value")
+        );
+        assert_eq!(
+            metadata.and_then(|value| value.get("vendor.example/key")),
+            Some("custom")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn parses_minimal_skill() -> Result<(), ParseError> {
+        let content = r"---
 name: my-skill
 description: Does something useful.
 ---
 # Instructions
 
 Follow these steps.
-"#;
+";
         let skill = Skill::parse(content);
-        assert!(skill.is_ok(), "Expected Ok, got: {:?}", skill);
-        let skill = skill.unwrap();
+        assert!(skill.is_ok(), "Expected Ok, got: {skill:?}");
+        let skill = skill?;
         assert_eq!(skill.name().as_str(), "my-skill");
         assert_eq!(skill.description().as_str(), "Does something useful.");
         assert!(skill.body().contains("# Instructions"));
+        Ok(())
     }
 
     #[test]
-    fn parses_skill_with_all_fields() {
+    fn parses_skill_with_all_fields() -> Result<(), ParseError> {
         let content = r#"---
 name: pdf-processing
 description: Extracts text and tables from PDF files.
@@ -270,14 +331,20 @@ allowed-tools: Bash(git:*) Read Write
 
 Instructions here.
 "#;
-        let skill = Skill::parse(content).unwrap();
+        let skill = Skill::parse(content)?;
         assert_eq!(skill.name().as_str(), "pdf-processing");
         assert_eq!(skill.frontmatter().license(), Some("Apache-2.0"));
         assert!(skill.frontmatter().compatibility().is_some());
         assert!(skill.frontmatter().metadata().is_some());
-        let metadata = skill.frontmatter().metadata().unwrap();
-        assert_eq!(metadata.get("author"), Some("example-org"));
+        assert_eq!(
+            skill
+                .frontmatter()
+                .metadata()
+                .and_then(|metadata| metadata.get("author")),
+            Some("example-org")
+        );
         assert!(skill.frontmatter().allowed_tools().is_some());
+        Ok(())
     }
 
     #[test]
@@ -289,21 +356,21 @@ Instructions here.
 
     #[test]
     fn rejects_unterminated_frontmatter() {
-        let content = r#"---
+        let content = r"---
 name: my-skill
 description: Test.
-"#;
+";
         let result = Skill::parse(content);
         assert_eq!(result, Err(ParseError::UnterminatedFrontmatter));
     }
 
     #[test]
     fn rejects_missing_name() {
-        let content = r#"---
+        let content = r"---
 description: Test.
 ---
 Body
-"#;
+";
         let result = Skill::parse(content);
         assert!(matches!(
             result,
@@ -313,11 +380,11 @@ Body
 
     #[test]
     fn rejects_missing_description() {
-        let content = r#"---
+        let content = r"---
 name: my-skill
 ---
 Body
-"#;
+";
         let result = Skill::parse(content);
         assert!(matches!(
             result,
@@ -329,12 +396,12 @@ Body
 
     #[test]
     fn rejects_invalid_name() {
-        let content = r#"---
+        let content = r"---
 name: Invalid-Name
 description: Test.
 ---
 Body
-"#;
+";
         let result = Skill::parse(content);
         assert!(matches!(result, Err(ParseError::InvalidName(_))));
     }
@@ -353,62 +420,66 @@ Body
 
     #[test]
     fn rejects_invalid_yaml() {
-        let content = r#"---
+        let content = r"---
 name: my-skill
 description [invalid yaml
 ---
 Body
-"#;
+";
         let result = Skill::parse(content);
         assert!(matches!(result, Err(ParseError::InvalidYaml { .. })));
     }
 
     #[test]
-    fn body_trimmed_removes_whitespace() {
-        let content = r#"---
+    fn body_trimmed_removes_whitespace() -> Result<(), ParseError> {
+        let content = r"---
 name: my-skill
 description: Test.
 ---
 
   Content here
 
-"#;
-        let skill = Skill::parse(content).unwrap();
+";
+        let skill = Skill::parse(content)?;
         assert_eq!(skill.body_trimmed(), "Content here");
+        Ok(())
     }
 
     #[test]
-    fn handles_empty_body() {
-        let content = r#"---
+    fn handles_empty_body() -> Result<(), ParseError> {
+        let content = r"---
 name: my-skill
 description: Test.
 ---
-"#;
-        let skill = Skill::parse(content).unwrap();
+";
+        let skill = Skill::parse(content)?;
         assert!(skill.body().is_empty() || skill.body().trim().is_empty());
+        Ok(())
     }
 
     #[test]
     fn handles_leading_whitespace_before_frontmatter() {
-        let content = r#"
+        let content = r"
 ---
 name: my-skill
 description: Test.
 ---
 Body
-"#;
+";
         let skill = Skill::parse(content);
         assert!(skill.is_ok());
     }
 
     #[test]
-    fn new_creates_skill_directly() {
-        let name = SkillName::new("my-skill").unwrap();
-        let desc = SkillDescription::new("Test description.").unwrap();
+    fn new_creates_skill_directly() -> Result<(), ParseError> {
+        let name = SkillName::new("my-skill").map_err(ParseError::InvalidName)?;
+        let desc =
+            SkillDescription::new("Test description.").map_err(ParseError::InvalidDescription)?;
         let frontmatter = Frontmatter::new(name, desc);
         let skill = Skill::new(frontmatter, "# Body content");
 
         assert_eq!(skill.name().as_str(), "my-skill");
         assert_eq!(skill.body(), "# Body content");
+        Ok(())
     }
 }

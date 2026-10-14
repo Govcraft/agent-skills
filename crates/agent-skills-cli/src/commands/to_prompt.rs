@@ -125,12 +125,12 @@ mod tests {
         let skill_dir = temp.path().join(name);
         fs::create_dir(&skill_dir).ok();
         let content = format!(
-            r#"---
+            r"---
 name: {name}
 description: {description}
 ---
 # Instructions
-"#
+"
         );
         fs::write(skill_dir.join("SKILL.md"), content).ok();
         skill_dir
