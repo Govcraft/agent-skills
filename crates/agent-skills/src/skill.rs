@@ -163,12 +163,12 @@ pub fn split_frontmatter_and_body(content: &str) -> Result<(&str, &str), ParseEr
 /// Finds the position of the closing `---` delimiter.
 fn find_closing_delimiter(content: &str) -> Option<usize> {
     let mut pos = 0;
-    for line in content.lines() {
-        if line == "---" {
+    for line in content.split_inclusive('\n') {
+        if line.trim_end_matches(['\r', '\n']) == "---" {
             return Some(pos);
         }
-        // +1 for the newline (this is approximate but works for finding start)
-        pos += line.len() + 1;
+        // Preserve the actual newline width when calculating byte offsets.
+        pos += line.len();
     }
     None
 }
@@ -240,6 +240,33 @@ fn parse_frontmatter(yaml: &str) -> Result<Frontmatter, ParseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_crlf_frontmatter_without_truncating_fields_or_body() -> Result<(), ParseError> {
+        let content = "---\r\nname: test-skill\r\ndescription: Test.\r\nlicense: MIT\r\ncompatibility: Requires git\r\nmetadata:\r\n  author: example\r\nallowed-tools: Read Write\r\n---\r\n# Instructions\r\nKeep this body.\r\n";
+        let skill = Skill::parse(content)?;
+        assert_eq!(skill.frontmatter().license(), Some("MIT"));
+        assert_eq!(
+            skill
+                .frontmatter()
+                .compatibility()
+                .map(Compatibility::as_str),
+            Some("Requires git")
+        );
+        assert_eq!(
+            skill
+                .frontmatter()
+                .metadata()
+                .and_then(|metadata| metadata.get("author")),
+            Some("example")
+        );
+        assert_eq!(
+            skill.frontmatter().allowed_tools().map(ToString::to_string),
+            Some("Read Write".to_string())
+        );
+        assert_eq!(skill.body(), "# Instructions\r\nKeep this body.\r\n");
+        Ok(())
+    }
 
     #[test]
     fn rejects_unknown_frontmatter_fields_with_actionable_errors() {
