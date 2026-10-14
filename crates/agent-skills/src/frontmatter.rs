@@ -11,7 +11,9 @@ use crate::name::SkillName;
 /// The YAML frontmatter of a SKILL.md file.
 ///
 /// Contains both required fields (name, description) and optional fields
-/// (license, compatibility, metadata, allowed-tools).
+/// (license, compatibility, metadata, allowed-tools). Unknown top-level fields
+/// are rejected during deserialization; arbitrary string keys are supported
+/// within metadata.
 ///
 /// # Examples
 ///
@@ -25,7 +27,7 @@ use crate::name::SkillName;
 /// assert_eq!(frontmatter.name().as_str(), "my-skill");
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "kebab-case", deny_unknown_fields)]
 pub struct Frontmatter {
     name: SkillName,
     description: SkillDescription,
@@ -182,74 +184,110 @@ impl FrontmatterBuilder {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use crate::error::ParseError;
 
-    fn test_name() -> SkillName {
-        SkillName::new("test-skill").unwrap()
+    fn test_name() -> Result<SkillName, ParseError> {
+        SkillName::new("test-skill").map_err(ParseError::InvalidName)
     }
 
-    fn test_description() -> SkillDescription {
-        SkillDescription::new("A test skill.").unwrap()
+    fn test_description() -> Result<SkillDescription, ParseError> {
+        SkillDescription::new("A test skill.").map_err(ParseError::InvalidDescription)
     }
 
     #[test]
-    fn new_creates_frontmatter_with_required_fields() {
-        let fm = Frontmatter::new(test_name(), test_description());
+    fn deserialization_rejects_unknown_top_level_fields() {
+        for unknown in ["invented-field", "descripton", "allowed_tools"] {
+            let yaml = format!("name: test-skill\ndescription: Test.\n{unknown}: value\n");
+            let result = serde_yml::from_str::<Frontmatter>(&yaml);
+            assert!(matches!(result, Err(error) if error.to_string().contains(unknown)));
+        }
+    }
+
+    #[test]
+    fn deserialization_preserves_arbitrary_metadata() -> Result<(), serde_yml::Error> {
+        let frontmatter: Frontmatter = serde_yml::from_str(
+            "name: test-skill\ndescription: Test.\nmetadata:\n  invented-field: value\n",
+        )?;
+        assert_eq!(
+            frontmatter
+                .metadata()
+                .and_then(|metadata| metadata.get("invented-field")),
+            Some("value")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn new_creates_frontmatter_with_required_fields() -> Result<(), ParseError> {
+        let fm = Frontmatter::new(test_name()?, test_description()?);
         assert_eq!(fm.name().as_str(), "test-skill");
         assert_eq!(fm.description().as_str(), "A test skill.");
         assert!(fm.license().is_none());
         assert!(fm.compatibility().is_none());
         assert!(fm.metadata().is_none());
         assert!(fm.allowed_tools().is_none());
+        Ok(())
     }
 
     #[test]
-    fn builder_sets_license() {
-        let fm = Frontmatter::builder(test_name(), test_description())
+    fn builder_sets_license() -> Result<(), ParseError> {
+        let fm = Frontmatter::builder(test_name()?, test_description()?)
             .license("MIT")
             .build();
         assert_eq!(fm.license(), Some("MIT"));
+        Ok(())
     }
 
     #[test]
-    fn builder_sets_compatibility() {
-        let compat = Compatibility::new("Requires docker").unwrap();
-        let fm = Frontmatter::builder(test_name(), test_description())
+    fn builder_sets_compatibility() -> Result<(), ParseError> {
+        let compat =
+            Compatibility::new("Requires docker").map_err(ParseError::InvalidCompatibility)?;
+        let fm = Frontmatter::builder(test_name()?, test_description()?)
             .compatibility(compat)
             .build();
         assert!(fm.compatibility().is_some());
-        assert_eq!(fm.compatibility().unwrap().as_str(), "Requires docker");
+        assert_eq!(
+            fm.compatibility().map(Compatibility::as_str),
+            Some("Requires docker")
+        );
+        Ok(())
     }
 
     #[test]
-    fn builder_sets_metadata() {
+    fn builder_sets_metadata() -> Result<(), ParseError> {
         let metadata = Metadata::from_pairs([("author", "test")]);
-        let fm = Frontmatter::builder(test_name(), test_description())
+        let fm = Frontmatter::builder(test_name()?, test_description()?)
             .metadata(metadata)
             .build();
         assert!(fm.metadata().is_some());
-        assert_eq!(fm.metadata().unwrap().get("author"), Some("test"));
+        assert_eq!(
+            fm.metadata().and_then(|metadata| metadata.get("author")),
+            Some("test")
+        );
+        Ok(())
     }
 
     #[test]
-    fn builder_sets_allowed_tools() {
+    fn builder_sets_allowed_tools() -> Result<(), ParseError> {
         let tools = AllowedTools::new("Read Write");
-        let fm = Frontmatter::builder(test_name(), test_description())
+        let fm = Frontmatter::builder(test_name()?, test_description()?)
             .allowed_tools(tools)
             .build();
         assert!(fm.allowed_tools().is_some());
-        assert_eq!(fm.allowed_tools().unwrap().len(), 2);
+        assert_eq!(fm.allowed_tools().map(AllowedTools::len), Some(2));
+        Ok(())
     }
 
     #[test]
-    fn builder_chains_all_options() {
-        let compat = Compatibility::new("Requires git").unwrap();
+    fn builder_chains_all_options() -> Result<(), ParseError> {
+        let compat =
+            Compatibility::new("Requires git").map_err(ParseError::InvalidCompatibility)?;
         let metadata = Metadata::from_pairs([("version", "1.0")]);
         let tools = AllowedTools::new("Bash");
 
-        let fm = Frontmatter::builder(test_name(), test_description())
+        let fm = Frontmatter::builder(test_name()?, test_description()?)
             .license("Apache-2.0")
             .compatibility(compat)
             .metadata(metadata)
@@ -260,5 +298,6 @@ mod tests {
         assert!(fm.compatibility().is_some());
         assert!(fm.metadata().is_some());
         assert!(fm.allowed_tools().is_some());
+        Ok(())
     }
 }
