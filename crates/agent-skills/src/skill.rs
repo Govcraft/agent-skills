@@ -27,7 +27,7 @@ use crate::name::SkillName;
 /// name: my-skill
 /// description: Does something useful.
 /// ---
-/// # Instructions
+/// ## Instructions
 ///
 /// Follow these steps...
 /// ";
@@ -87,7 +87,7 @@ impl Skill {
     /// name: my-skill
     /// description: Does something useful.
     /// ---
-    /// # Instructions
+    /// ## Instructions
     ///
     /// Follow these steps...
     /// ";
@@ -136,7 +136,7 @@ impl Skill {
 }
 
 /// Splits SKILL.md content into frontmatter YAML and body.
-fn split_frontmatter_and_body(content: &str) -> Result<(&str, &str), ParseError> {
+pub fn split_frontmatter_and_body(content: &str) -> Result<(&str, &str), ParseError> {
     // Content must start with ---
     let content = content.trim_start();
     if !content.starts_with("---") {
@@ -176,20 +176,25 @@ fn find_closing_delimiter(content: &str) -> Option<usize> {
 /// Internal struct for YAML deserialization.
 #[derive(Deserialize)]
 #[serde(rename_all = "kebab-case", deny_unknown_fields)]
-struct RawFrontmatter {
-    name: Option<String>,
-    description: Option<String>,
-    license: Option<String>,
-    compatibility: Option<String>,
-    metadata: Option<HashMap<String, String>>,
-    allowed_tools: Option<String>,
+pub struct RawFrontmatter {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub license: Option<String>,
+    pub compatibility: Option<String>,
+    pub metadata: Option<HashMap<String, String>>,
+    pub allowed_tools: Option<String>,
+}
+
+/// Deserializes known frontmatter fields without validating domain values.
+pub fn parse_raw_frontmatter(yaml: &str) -> Result<RawFrontmatter, ParseError> {
+    serde_yml::from_str(yaml).map_err(|error| ParseError::InvalidYaml {
+        message: error.to_string(),
+    })
 }
 
 /// Parses frontmatter from YAML content.
 fn parse_frontmatter(yaml: &str) -> Result<Frontmatter, ParseError> {
-    let raw: RawFrontmatter = serde_yml::from_str(yaml).map_err(|e| ParseError::InvalidYaml {
-        message: e.to_string(),
-    })?;
+    let raw = parse_raw_frontmatter(yaml)?;
 
     // Validate required fields
     let name_str = raw.name.ok_or(ParseError::MissingField { field: "name" })?;
